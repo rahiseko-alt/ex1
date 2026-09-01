@@ -13,7 +13,7 @@
       "dependsOn": [],
       "files": ["package.json", "wrangler.toml", "src/app/server.ts"],
       "automation": "ci",
-      "status": "todo",
+      "status": "done",
       "origin": "initial"
     },
     {
