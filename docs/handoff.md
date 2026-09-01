@@ -24,9 +24,10 @@
 ## いま何をしているか
 
 **顧客管理システム（ひとりで使う CRM）を作っている。全体計画 `docs/plan.json` は当初30項目
-＋追記1項目。当初分のうち `T001`〜`T010` が完了し、残り20項目。追記した `T031` は未着手。**
+＋追記1項目。当初分のうち `T001`〜`T011` が完了し、残り19項目。追記した `T031` は未着手。**
 
 **顧客の台帳（登録・一覧・検索・詳細・編集・削除・入力チェック）は一通り動く。**
+ここから「やり取りの履歴」（`T011`〜`T014`）に入り、置き場だけができた状態。
 `pnpm run db:setup` のあと `pnpm run dev` で http://localhost:8787 から使える。
 ネット上にはまだ置いていない（`T027`）。
 
@@ -37,9 +38,10 @@
 
 ## 完了したこと
 
-**`T001`〜`T010`（顧客の台帳）を実装し、すべて `main` にマージ済み。**
-各項目は `completion-checker` が実ブラウザ（Playwright の chromium）で `verify` の手順を
-なぞって「通った」と判定したものだけを `done` にしてある。
+**`T001`〜`T011` を実装し、すべて `main` にマージ済み。**
+各項目は `completion-checker` が `verify` の手順をなぞって「通った」と判定したものだけを
+`done` にしてある（画面のある項目は実ブラウザ＝Playwright の chromium、置き場だけの項目は
+`db:setup` / `db:show` と実際の D1 への SQL で確かめた）。
 
 | 項目   | 何ができるか                                     | PR  |
 | ------ | ------------------------------------------------ | --- |
@@ -53,6 +55,7 @@
 | `T008` | 消せる（聞き返しつき）                           | #11 |
 | `T009` | 入力のまちがいを知らせる                         | #12 |
 | `T010` | 名前や会社名で探せる                             | #13 |
+| `T011` | やり取りの記録の置き場（D1 の `history`）        | #15 |
 
 - **スタックを決めて `docs/decisions.md`「4-b.」「4-c.」に記録**
   — Cloudflare Workers ＋ Hono ＋ サーバー側で HTML を組み立てる／表の形は `migrations/*.sql` が正本
@@ -60,15 +63,20 @@
 - **全体照合（`/plan-verify`）を実施し、壊れている項目は無かった。**
   照合役が `T001`〜`T010` を1つの置き場で順に通し、最後に `T001` `T003` `T005` `T006` を
   なぞり直した。検索欄が付いた後も一覧の名前は押せ、入力検査が入った後も名前だけの登録は通る
-- `pnpm run check`（129テスト） / `pnpm run build` 通過
+- **`T011`（やり取りの記録の置き場）を追加**（このセッション）
+  — `migrations/0002_history.sql`。`customer_id` / `happened_on`（やり取りがあった日）/ `body`。
+  顧客を消すとその人のやり取りも消える（`ON DELETE CASCADE`）。`(customer_id, happened_on DESC)`
+  に索引を張ってある（`T013` の「新しい順」で使う）。画面はまだ無い
+- `pnpm run check`（135テスト） / `pnpm run build` 通過
 
 ## 次にやること
 
-**`pnpm run plan:next` が出す1件に着手する。いまは `T011`（やり取りの記録の置き場をつくる）。**
-ここから「やり取りの履歴」（`T011`〜`T014`）に入る。
+**`pnpm run plan:next` が出す1件に着手する。いまは `T012`（顧客にやり取りを1件書ける）。**
 
-`T011` の `verify` は `T002` と同じ形（`db:setup` → `db:show` → 表があること）なので、
-`migrations/0002_history.sql` を足して同じ手順で確かめられる。
+置き場（`history` 表）はもう出来ている。`T012` は画面側の仕事で、詳細画面に
+「やり取りを追加」の入力欄（日付と内容）を足し、保存したものが同じ画面に出るようにする。
+触るファイルは `src/app/history.ts` `src/app/history.test.ts` `src/app/customers.ts`。
+表の列名は `customer_id` / `happened_on` / `body`（`src/app/db.ts` の `HistoryRow` 参照）。
 
 ### ユーザーに聞いたほうがよいこと
 
@@ -108,6 +116,9 @@
   `git diff --stat origin/main origin/<branch>` で差分ゼロを確かめてから
   `git merge -s ours origin/<branch>` で取り込む。`-s ours` を使うのは、内容が同じでも
   履歴が分かれているため通常のマージだと毎回衝突するから
+- **手元の SQLite（`node:sqlite`）は既定で外部キーを見ない。D1 は見る。** 表の検査を
+  書くときは `PRAGMA foreign_keys = ON` を先に流さないと、「居ない顧客のやり取りは
+  入れられない」類の検査が素通りする（`src/app/db.test.ts` で実施済み）
 - **`verify` の手順は1つあたり8文字以上必要。** 「一覧を開く」は短すぎて検証に弾かれた
   （`src/plan.ts` の `validateVerifySteps`）
 - **`docs/plan.json` は一度確定したら本文を書き換えない。** できるのは `status` の変更と
