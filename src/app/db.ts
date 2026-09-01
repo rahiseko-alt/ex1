@@ -42,9 +42,32 @@ export async function insertCustomer(
     .run();
 }
 
-/** 顧客を名前順で全件返す。 */
-export async function listCustomers(db: D1Database): Promise<CustomerRow[]> {
-  const { results } = await db.prepare('SELECT * FROM customers ORDER BY name').all<CustomerRow>();
+/**
+ * 顧客を名前順で返す。`keyword` があれば、名前か会社名にそれを含むものだけ。
+ *
+ * `LIKE` の前後を `%` で挟むだけの単純な探し方にしている。件数が少ないうちは十分で、
+ * ふりがなや読み替えを入れるのは別の項目（T031）の仕事。
+ */
+export async function listCustomers(db: D1Database, keyword = ''): Promise<CustomerRow[]> {
+  const trimmed = keyword.trim();
+  if (trimmed === '') {
+    const { results } = await db
+      .prepare('SELECT * FROM customers ORDER BY name')
+      .all<CustomerRow>();
+    return results;
+  }
+
+  // `%` と `_` は LIKE では「何にでも当たる」記号なので、打ち込まれたら文字として扱う。
+  const escaped = trimmed.replaceAll('!', '!!').replaceAll('%', '!%').replaceAll('_', '!_');
+  const pattern = `%${escaped}%`;
+  const { results } = await db
+    .prepare(
+      `SELECT * FROM customers
+        WHERE name LIKE ? ESCAPE '!' OR company LIKE ? ESCAPE '!'
+        ORDER BY name`,
+    )
+    .bind(pattern, pattern)
+    .all<CustomerRow>();
   return results;
 }
 
