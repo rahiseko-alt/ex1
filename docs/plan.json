@@ -148,7 +148,7 @@
       "dependsOn": ["T005"],
       "files": ["src/app/customers.ts", "src/app/customers.test.ts"],
       "automation": "ci",
-      "status": "todo",
+      "status": "done",
       "origin": "initial"
     },
     {
