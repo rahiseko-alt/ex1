@@ -14,7 +14,9 @@ import {
   updateCustomer,
   type CustomerRow,
   type Env,
+  type HistoryRow,
 } from './db.js';
+import { insertHistory, listHistory, validateHistory, type HistoryInput } from './history.js';
 import { validateCustomer, type FieldError } from './validate.js';
 
 /** 入力欄1つぶんの定義。画面と、保存処理の両方がこの並びを見る。 */
@@ -232,6 +234,82 @@ const DETAIL_ROWS = [
   { key: 'note', label: 'メモ' },
 ] as const;
 
+/** 入力欄1つぶんのまちがいを、欄の下に出す形にする。顧客の入力欄と同じ見せ方。 */
+function errorNote(field: string, errors: readonly FieldError[]): string {
+  const message = errors.find((error) => error.field === field);
+  return message === undefined
+    ? ''
+    : `\n        <strong class="error" id="e-${field}">${escapeHtml(message.message)}</strong>`;
+}
+
+/** やり取りを1件足す入力欄。日付と内容だけ。 */
+function renderHistoryForm(
+  customerId: number,
+  values: Partial<HistoryInput> = {},
+  errors: readonly FieldError[] = [],
+): string {
+  const summary =
+    errors.length === 0
+      ? ''
+      : `    <p class="error-summary"><strong>入力を確かめてください。</strong></p>\n`;
+  return `${summary}    <form method="post" action="/customers/${customerId}/history" novalidate>
+      <p>
+        <label for="f-happened_on">日付</label><br />
+        <input id="f-happened_on" name="happened_on" type="date" value="${escapeHtml(values.happened_on ?? '')}" required />${errorNote('happened_on', errors)}
+      </p>
+      <p>
+        <label for="f-body">内容</label><br />
+        <textarea id="f-body" name="body" rows="4" required>${escapeHtml(values.body ?? '')}</textarea>${errorNote('body', errors)}
+      </p>
+      <p><button type="submit">やり取りを追加</button></p>
+    </form>`;
+}
+
+/** 書かれたやり取りを並べる。0件のときは表を出さず、そう書く。 */
+function renderHistoryList(rows: readonly HistoryRow[]): string {
+  if (rows.length === 0) return '    <p>まだありません。</p>';
+  const items = rows
+    .map(
+      (row) =>
+        // 改行を <br /> に置き換えるのは、複数行で書いたものが1行に潰れて読めなくなるため。
+        `        <tr><th>${escapeHtml(row.happened_on)}</th><td>${escapeHtml(row.body).replaceAll('\n', '<br />')}</td></tr>`,
+    )
+    .join('\n');
+  return `    <p>${rows.length}件</p>
+    <table>
+      <tbody>
+${items}
+      </tbody>
+    </table>`;
+}
+
+/** 詳細画面。やり取りの入力欄と一覧も同じ画面に出す。 */
+function detailPage(
+  row: CustomerRow,
+  history: readonly HistoryRow[],
+  values: Partial<HistoryInput> = {},
+  errors: readonly FieldError[] = [],
+): string {
+  const details = DETAIL_ROWS.map(
+    (detail) => `        <tr><th>${detail.label}</th><td>${escapeHtml(row[detail.key])}</td></tr>`,
+  ).join('\n');
+
+  return page(
+    row.name,
+    `    <h1>${escapeHtml(row.name)}</h1>
+    <table>
+      <tbody>
+${details}
+      </tbody>
+    </table>
+    <p><a href="/customers/${row.id}/edit">編集</a> ／ <a href="/customers/${row.id}/delete">削除</a></p>
+    <h2>やり取り</h2>
+${renderHistoryForm(row.id, values, errors)}
+${renderHistoryList(history)}
+    <p><a href="/customers">顧客の一覧へ戻る</a></p>`,
+  );
+}
+
 customers.get('/customers/:id', async (c) => {
   const id = Number(c.req.param('id'));
   // 数字でない id は探しに行かない。/customers/new のような別の道と取り違えないため。
@@ -240,23 +318,36 @@ customers.get('/customers/:id', async (c) => {
   const row = await findCustomer(c.env.DB, id);
   if (row === null) return c.html(notFoundPage(), 404);
 
-  const details = DETAIL_ROWS.map(
-    (detail) => `        <tr><th>${detail.label}</th><td>${escapeHtml(row[detail.key])}</td></tr>`,
-  ).join('\n');
+  return c.html(detailPage(row, await listHistory(c.env.DB, id)));
+});
 
-  return c.html(
-    page(
-      row.name,
-      `    <h1>${escapeHtml(row.name)}</h1>
-    <table>
-      <tbody>
-${details}
-      </tbody>
-    </table>
-    <p><a href="/customers/${row.id}/edit">編集</a> ／ <a href="/customers/${row.id}/delete">削除</a></p>
-    <p><a href="/customers">顧客の一覧へ戻る</a></p>`,
-    ),
-  );
+customers.post('/customers/:id/history', async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.notFound();
+
+  const row = await findCustomer(c.env.DB, id);
+  if (row === null) return c.html(notFoundPage(), 404);
+
+  const form = await c.req.formData();
+  const read = (name: string): string => {
+    const value = form.get(name);
+    return typeof value === 'string' ? value : '';
+  };
+  const input: HistoryInput = {
+    happened_on: read('happened_on').trim(),
+    body: read('body').trim(),
+  };
+
+  const errors = validateHistory(input);
+  if (errors.length > 0) {
+    // 打った内容はそのまま返す。書き直しのために全部打ち直させないため。
+    return c.html(detailPage(row, await listHistory(c.env.DB, id), input, errors), 400);
+  }
+
+  await insertHistory(c.env.DB, id, input);
+
+  // 保存後に詳細へ送り直すのは、再読み込みで同じやり取りが二重に入らないようにするため。
+  return c.redirect(`/customers/${id}`, 303);
 });
 
 customers.get('/customers/:id/edit', async (c) => {
