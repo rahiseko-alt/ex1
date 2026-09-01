@@ -23,6 +23,21 @@ export interface CustomerRow {
   updated_at: string;
 }
 
+/**
+ * `history` の1行。`migrations/0002_history.sql` と対応する。
+ *
+ * `happened_on` は「やり取りがあった日」で、書き込んだ日（`created_at`）とは別。
+ * 後から思い出して書き足すことがあるため分けている。
+ */
+export interface HistoryRow {
+  id: number;
+  customer_id: number;
+  happened_on: string;
+  body: string;
+  created_at: string;
+  updated_at: string;
+}
+
 /** 置き場にある表の名前を全部返す。中身ではなく「入れ物が出来ているか」を見るために使う。 */
 export async function listTableNames(db: D1Database): Promise<string[]> {
   const { results } = await db
