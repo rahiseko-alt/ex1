@@ -3,3 +3,11 @@
 name = "crm"
 main = "src/app/server.ts"
 compatibility_date = "2026-09-01"
+
+# 顧客データの置き場（Cloudflare D1）。
+# database_id は本番の置き場を作ったときに Cloudflare が発行する値で、いまは仮。
+# 手元での確認（--local）はこの値を見ないため空のままで動く。T027（公開）で本物に差し替える。
+[[d1_databases]]
+binding = "DB"
+database_name = "crm"
+database_id = "local-only-placeholder"

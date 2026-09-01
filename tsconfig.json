@@ -2,7 +2,7 @@
   "compilerOptions": {
     "target": "ES2023",
     "lib": ["ES2023"],
-    "types": ["node"],
+    "types": ["node", "@cloudflare/workers-types"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "rootDir": "src",
