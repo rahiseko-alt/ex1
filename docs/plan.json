@@ -28,7 +28,7 @@
       "dependsOn": ["T001"],
       "files": ["migrations/0001_customers.sql", "package.json", "src/app/db.ts"],
       "automation": "ci",
-      "status": "todo",
+      "status": "done",
       "origin": "initial"
     },
     {
