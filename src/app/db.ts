@@ -52,3 +52,19 @@ export async function listCustomers(db: D1Database): Promise<CustomerRow[]> {
 export async function findCustomer(db: D1Database, id: number): Promise<CustomerRow | null> {
   return await db.prepare('SELECT * FROM customers WHERE id = ?').bind(id).first<CustomerRow>();
 }
+
+/** 顧客を1件書き換える。updated_at も同時に進める。 */
+export async function updateCustomer(
+  db: D1Database,
+  id: number,
+  input: Pick<CustomerRow, 'name' | 'company' | 'phone' | 'email' | 'note'>,
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE customers
+          SET name = ?, company = ?, phone = ?, email = ?, note = ?, updated_at = datetime('now')
+        WHERE id = ?`,
+    )
+    .bind(input.name, input.company, input.phone, input.email, input.note, id)
+    .run();
+}

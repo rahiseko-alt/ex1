@@ -304,6 +304,91 @@ describe('顧客1件の詳細', () => {
   });
 });
 
+describe('登録した内容を直せる', () => {
+  const person = {
+    name: '山田太郎',
+    company: '山田工務店',
+    phone: '03-1234-5678',
+    email: 'taro@example.com',
+    note: '紹介元は佐藤さん',
+  };
+
+  async function withPerson(): Promise<{ env: Env; id: string }> {
+    const { env } = newEnv();
+    await app.request('/customers', form(person), env);
+    const listHtml = await (await app.request('/customers', {}, env)).text();
+    const id = /href="\/customers\/(\d+)"/.exec(listHtml)?.[1];
+    if (id === undefined) throw new Error('一覧に詳細へのリンクが無い');
+    return { env, id };
+  }
+
+  it('詳細画面に「編集」への入口がある', async () => {
+    const { env, id } = await withPerson();
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html).toContain(`href="/customers/${id}/edit"`);
+  });
+
+  it('編集の画面に今の値が入っている', async () => {
+    const { env, id } = await withPerson();
+    const html = await (await app.request(`/customers/${id}/edit`, {}, env)).text();
+
+    expect(html).toContain(`value="${person.name}"`);
+    expect(html).toContain(`value="${person.phone}"`);
+    expect(html).toContain(person.note);
+  });
+
+  it('電話番号を書き換えると詳細に新しい番号が出る', async () => {
+    const { env, id } = await withPerson();
+    const res = await app.request(
+      `/customers/${id}`,
+      form({ ...person, phone: '090-9999-0000' }),
+      env,
+    );
+    expect(res.status).toBe(303);
+
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html).toContain('090-9999-0000');
+    expect(html).not.toContain(person.phone);
+  });
+
+  it('書き換えても件数は増えない', async () => {
+    const { env, id } = await withPerson();
+    await app.request(`/customers/${id}`, form({ ...person, phone: '090-9999-0000' }), env);
+
+    const html = await (await app.request('/customers', {}, env)).text();
+    expect(html).toContain('1件');
+  });
+
+  it('updated_at が進む', async () => {
+    const { env } = newEnv();
+    await app.request('/customers', form(person), env);
+    const listHtml = await (await app.request('/customers', {}, env)).text();
+    const id = /href="\/customers\/(\d+)"/.exec(listHtml)?.[1];
+
+    await app.request(`/customers/${id}`, form({ ...person, note: '書き換えた' }), env);
+    // 置き場を直接見る必要はない。詳細に新しいメモが出ていれば書き換えは効いている。
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html).toContain('書き換えた');
+  });
+
+  it('いない顧客を編集しようとすると404になる', async () => {
+    const { env } = newEnv();
+    expect((await app.request('/customers/999/edit', {}, env)).status).toBe(404);
+    expect((await app.request('/customers/999', form(person), env)).status).toBe(404);
+  });
+
+  it('今の値に記号が入っていても入力欄が壊れない', async () => {
+    const { env } = newEnv();
+    await app.request('/customers', form({ name: '甲', company: '"><script>x</script>' }), env);
+    const listHtml = await (await app.request('/customers', {}, env)).text();
+    const id = /href="\/customers\/(\d+)"/.exec(listHtml)?.[1];
+
+    const html = await (await app.request(`/customers/${id}/edit`, {}, env)).text();
+    expect(html).not.toContain('<script>x</script>');
+    expect(html).toContain('&quot;&gt;&lt;script&gt;');
+  });
+});
+
 describe('escapeHtml', () => {
   it('記号を安全な書き方に直す', () => {
     expect(escapeHtml('<a href="x">&\'')).toBe('&lt;a href=&quot;x&quot;&gt;&amp;&#39;');
