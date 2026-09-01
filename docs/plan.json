@@ -58,7 +58,7 @@
       "dependsOn": ["T002", "T003"],
       "files": ["src/app/customers.ts", "src/app/db.ts", "src/app/customers.test.ts"],
       "automation": "ci",
-      "status": "todo",
+      "status": "done",
       "origin": "initial"
     },
     {
