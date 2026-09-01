@@ -47,3 +47,8 @@ export async function listCustomers(db: D1Database): Promise<CustomerRow[]> {
   const { results } = await db.prepare('SELECT * FROM customers ORDER BY name').all<CustomerRow>();
   return results;
 }
+
+/** 顧客を1件返す。見つからなければ null。 */
+export async function findCustomer(db: D1Database, id: number): Promise<CustomerRow | null> {
+  return await db.prepare('SELECT * FROM customers WHERE id = ?').bind(id).first<CustomerRow>();
+}
