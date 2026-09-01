@@ -1,0 +1,5 @@
+# Cloudflare Workers の設定。`pnpm run dev` はこのファイルを読んで
+# http://localhost:8787 に画面を出す。
+name = "crm"
+main = "src/app/server.ts"
+compatibility_date = "2026-09-01"
