@@ -163,7 +163,7 @@
       "dependsOn": ["T002"],
       "files": ["migrations/0002_history.sql", "src/app/db.ts"],
       "automation": "ci",
-      "status": "todo",
+      "status": "done",
       "origin": "initial"
     },
     {
