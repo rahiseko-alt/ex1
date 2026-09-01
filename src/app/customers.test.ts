@@ -163,6 +163,71 @@ describe('登録した顧客が消えずに残る', () => {
   });
 });
 
+describe('顧客の一覧', () => {
+  const people = [
+    { name: '山田太郎', company: '山田工務店' },
+    { name: '鈴木花子', company: '鈴木商店' },
+    { name: '佐藤次郎', company: '佐藤製作所' },
+  ];
+
+  async function withThreeCustomers(): Promise<{ env: Env; html: string }> {
+    const { env } = newEnv();
+    for (const person of people) {
+      await app.request('/customers', form(person), env);
+    }
+    const html = await (await app.request('/customers', {}, env)).text();
+    return { env, html };
+  }
+
+  it('登録した3件すべてが並ぶ', async () => {
+    const { html } = await withThreeCustomers();
+    for (const person of people) {
+      expect(html).toContain(person.name);
+    }
+  });
+
+  it('名前と会社名がどちらも出る', async () => {
+    const { html } = await withThreeCustomers();
+    for (const person of people) {
+      expect(html).toContain(person.company);
+    }
+  });
+
+  it('見出しに「名前」と「会社名」がある', async () => {
+    const { html } = await withThreeCustomers();
+    expect(html).toContain('<th>名前</th>');
+    expect(html).toContain('<th>会社名</th>');
+  });
+
+  it('件数が出る', async () => {
+    const { html } = await withThreeCustomers();
+    expect(html).toContain('3件');
+  });
+
+  it('同じ行に名前と会社名が並ぶ', async () => {
+    const { html } = await withThreeCustomers();
+    expect(html).toContain('<tr><td>山田太郎</td><td>山田工務店</td></tr>');
+  });
+
+  it('会社名が空でも行が出る', async () => {
+    const { env } = newEnv();
+    await app.request('/customers', form({ name: '名無しの権兵衛' }), env);
+
+    const html = await (await app.request('/customers', {}, env)).text();
+    expect(html).toContain('<tr><td>名無しの権兵衛</td><td></td></tr>');
+    expect(html).toContain('1件');
+  });
+
+  it('会社名の記号もそのまま画面に出さない', async () => {
+    const { env } = newEnv();
+    await app.request('/customers', form({ name: '甲', company: '<b>乙</b>' }), env);
+
+    const html = await (await app.request('/customers', {}, env)).text();
+    expect(html).not.toContain('<b>乙</b>');
+    expect(html).toContain('&lt;b&gt;');
+  });
+});
+
 describe('escapeHtml', () => {
   it('記号を安全な書き方に直す', () => {
     expect(escapeHtml('<a href="x">&\'')).toBe('&lt;a href=&quot;x&quot;&gt;&amp;&#39;');

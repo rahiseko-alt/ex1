@@ -6,7 +6,7 @@
  */
 import { Hono } from 'hono';
 
-import { insertCustomer, listCustomers, type Env } from './db.js';
+import { insertCustomer, listCustomers, type CustomerRow, type Env } from './db.js';
 
 /** 入力欄1つぶんの定義。画面と、保存処理の両方がこの並びを見る。 */
 interface Field {
@@ -103,17 +103,34 @@ customers.post('/customers', async (c) => {
   return c.redirect('/customers', 303);
 });
 
+/** 一覧に出す列。名前と会社名だけ。残りは詳細画面（T006）で見せる。 */
+const LIST_COLUMNS = [
+  { key: 'name', label: '名前' },
+  { key: 'company', label: '会社名' },
+] as const;
+
+function renderRow(row: CustomerRow): string {
+  const cells = LIST_COLUMNS.map((column) => `<td>${escapeHtml(row[column.key])}</td>`).join('');
+  return `        <tr>${cells}</tr>`;
+}
+
 customers.get('/customers', async (c) => {
   const rows = await listCustomers(c.env.DB);
-  const items = rows.map((row) => `      <li>${escapeHtml(row.name)}</li>`).join('\n');
+  const head = LIST_COLUMNS.map((column) => `<th>${column.label}</th>`).join('');
 
   return c.html(
     page(
       '顧客の一覧',
       `    <h1>顧客の一覧</h1>
-    <ul>
-${items}
-    </ul>
+    <p>${rows.length}件</p>
+    <table>
+      <thead>
+        <tr>${head}</tr>
+      </thead>
+      <tbody>
+${rows.map(renderRow).join('\n')}
+      </tbody>
+    </table>
     <p><a href="/customers/new">顧客を登録する</a></p>`,
     ),
   );
