@@ -15,6 +15,7 @@ import {
   type CustomerRow,
   type Env,
 } from './db.js';
+import { validateCustomer, type FieldError } from './validate.js';
 
 /** 入力欄1つぶんの定義。画面と、保存処理の両方がこの並びを見る。 */
 interface Field {
@@ -64,17 +65,47 @@ ${body}
 `;
 }
 
-function renderField(field: Field, current = ''): string {
+function renderField(field: Field, current = '', errors: readonly FieldError[] = []): string {
   const id = `f-${field.name}`;
   const required = field.required === true ? ' required' : '';
   const value = escapeHtml(current);
   const input = field.multiline
     ? `<textarea id="${id}" name="${field.name}" rows="4"${required}>${value}</textarea>`
     : `<input id="${id}" name="${field.name}" type="${field.type ?? 'text'}" value="${value}"${required} />`;
+  const message = errors.find((error) => error.field === field.name);
+  const note =
+    message === undefined
+      ? ''
+      : `\n        <strong class="error" id="e-${field.name}">${escapeHtml(message.message)}</strong>`;
   return `      <p>
         <label for="${id}">${field.label}</label><br />
-        ${input}
+        ${input}${note}
       </p>`;
+}
+
+/**
+ * 入力欄をまとめて組み立てる。
+ *
+ * form に novalidate を付けているのは、ブラウザ自身の警告に先を越されないようにするため。
+ * 先を越されると、こちらが選んだ言葉が画面に出ない。
+ */
+function renderForm(
+  action: string,
+  buttonLabel: string,
+  values: Partial<Record<string, string>> = {},
+  errors: readonly FieldError[] = [],
+): string {
+  const summary =
+    errors.length === 0
+      ? ''
+      : `    <p class="error-summary"><strong>入力を確かめてください。</strong></p>\n`;
+  const fields = CUSTOMER_FIELDS.map((field) =>
+    renderField(field, values[field.name] ?? '', errors),
+  ).join('\n');
+  return `${summary}    <form method="post" action="${action}" novalidate>
+${fields}
+      <p><button type="submit">${buttonLabel}</button></p>
+    </form>`;
 }
 
 /** 送られてきた入力から、表に入れる5つの値を取り出す。登録も書き換えも同じ読み方をする。 */
@@ -101,17 +132,29 @@ customers.get('/customers/new', (c) =>
     page(
       '顧客を登録する',
       `    <h1>顧客を登録する</h1>
-    <form method="post" action="/customers">
-${CUSTOMER_FIELDS.map((field) => renderField(field)).join('\n')}
-      <p><button type="submit">登録</button></p>
-    </form>
+${renderForm('/customers', '登録')}
     <p><a href="/customers">登録した顧客を見る</a></p>`,
     ),
   ),
 );
 
 customers.post('/customers', async (c) => {
-  await insertCustomer(c.env.DB, await readCustomerInput(await c.req.formData()));
+  const input = await readCustomerInput(await c.req.formData());
+  const errors = validateCustomer(input);
+  if (errors.length > 0) {
+    // 入力し直しになるので、打った内容はそのまま返す。
+    return c.html(
+      page(
+        '顧客を登録する',
+        `    <h1>顧客を登録する</h1>
+${renderForm('/customers', '登録', input, errors)}
+    <p><a href="/customers">登録した顧客を見る</a></p>`,
+      ),
+      400,
+    );
+  }
+
+  await insertCustomer(c.env.DB, input);
 
   // 保存後に一覧へ送るのは、同じ画面を再読み込みしたときに二重登録されないようにするため。
   return c.redirect('/customers', 303);
@@ -212,10 +255,7 @@ customers.get('/customers/:id/edit', async (c) => {
     page(
       `${row.name} を編集する`,
       `    <h1>${escapeHtml(row.name)} を編集する</h1>
-    <form method="post" action="/customers/${row.id}">
-${CUSTOMER_FIELDS.map((field) => renderField(field, row[field.name as keyof CustomerRow] as string)).join('\n')}
-      <p><button type="submit">保存</button></p>
-    </form>
+${renderForm(`/customers/${row.id}`, '保存', row as unknown as Record<string, string>)}
     <p><a href="/customers/${row.id}">やめる</a></p>`,
     ),
   );
@@ -228,7 +268,22 @@ customers.post('/customers/:id', async (c) => {
   const row = await findCustomer(c.env.DB, id);
   if (row === null) return c.html(notFoundPage(), 404);
 
-  await updateCustomer(c.env.DB, id, await readCustomerInput(await c.req.formData()));
+  const input = await readCustomerInput(await c.req.formData());
+  const errors = validateCustomer(input);
+  if (errors.length > 0) {
+    // 書き換えでも同じ検査をする。ここを素通りさせると、編集から名前を空にできてしまう。
+    return c.html(
+      page(
+        `${row.name} を編集する`,
+        `    <h1>${escapeHtml(row.name)} を編集する</h1>
+${renderForm(`/customers/${row.id}`, '保存', input, errors)}
+    <p><a href="/customers/${row.id}">やめる</a></p>`,
+      ),
+      400,
+    );
+  }
+
+  await updateCustomer(c.env.DB, id, input);
 
   // 書き換えたあとは詳細へ戻す。何がどう変わったかをその場で見せるため。
   return c.redirect(`/customers/${id}`, 303);
