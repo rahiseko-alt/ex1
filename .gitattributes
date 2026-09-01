@@ -1,0 +1,5 @@
+# 複数 branch が並行して追記する台帳。末尾への追記だけなら、branch 間で
+# コンフリクトさせず両方の記録を残すため union merge を使う。
+# 根拠は docs/decisions.md「9. 失敗台帳・放置台帳」を参照。
+docs/failure-action-log.md merge=union
+docs/neglected-log.md merge=union

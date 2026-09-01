@@ -1,0 +1,9 @@
+# worktree を作るときに、メインのチェックアウトからコピーする gitignore 済みファイル。
+# worktree は新しいチェックアウトなので、追跡されていないファイルは既定では存在しない。
+# 記法は .gitignore と同じ。
+# https://code.claude.com/docs/en/worktrees
+
+.env
+.env.*
+.claude/settings.local.json
+CLAUDE.local.md

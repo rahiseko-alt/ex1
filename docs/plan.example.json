@@ -1,0 +1,77 @@
+{
+  "goal": "会社の紹介サイトが公開でき、問い合わせが届く状態",
+  "items": [
+    {
+      "id": "T001",
+      "title": "トップページの骨組み",
+      "deliverable": "ヘッダー・本文枠・フッターが並んだHTML 1枚",
+      "verify": [
+        "index.html をブラウザで開く",
+        "画面幅をスマホ相当（375px）まで狭める",
+        "文字が画面からはみ出していないことを確認する"
+      ],
+      "dependsOn": [],
+      "files": ["index.html"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T002",
+      "title": "共通の見た目（色・文字サイズ）",
+      "deliverable": "サイト全体で使う色と文字の設定ファイル",
+      "verify": ["index.html を開く", "見出しが指定した色で表示されていることを確認する"],
+      "dependsOn": [],
+      "files": ["style.css"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T003",
+      "title": "会社概要ページ",
+      "deliverable": "社名・所在地・設立年が載ったページ",
+      "verify": [
+        "トップページの「会社概要」を押す",
+        "会社概要ページが開くことを確認する",
+        "戻るボタンでトップページに戻れることを確認する"
+      ],
+      "dependsOn": ["T001"],
+      "files": ["about.html", "index.html"],
+      "automation": "ci",
+      "status": "todo",
+      "origin": "initial"
+    },
+    {
+      "id": "T004",
+      "title": "問い合わせフォームの見た目",
+      "deliverable": "名前・メール・本文の入力欄と送信ボタン",
+      "verify": [
+        "contact.html を開く",
+        "空のまま送信ボタンを押す",
+        "「入力してください」と表示されることを確認する"
+      ],
+      "dependsOn": ["T002"],
+      "files": ["contact.html"],
+      "automation": "ci",
+      "status": "todo",
+      "origin": "initial"
+    },
+    {
+      "id": "T005",
+      "title": "問い合わせの送信先を設定する",
+      "deliverable": "送信ボタンを押すと指定した宛先にメールが届く状態",
+      "verify": [
+        "フォームから自分宛にテストメールを1通送る",
+        "受信箱（迷惑メールフォルダも）を見る",
+        "メールが届いていることを確認する"
+      ],
+      "dependsOn": ["T004"],
+      "files": ["contact.html"],
+      "automation": "human",
+      "status": "todo",
+      "origin": "added",
+      "note": "T004 の作業中に、送信先が決まっていないことが判明した"
+    }
+  ]
+}

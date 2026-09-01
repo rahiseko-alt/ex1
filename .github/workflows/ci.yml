@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ジョブ名は Ruleset の必須チェックとして参照される。
+  # 実行内容が増減しても名前が陳腐化しないよう、あえて汎用名にしている。
+  # 改名する場合は Ruleset の必須チェックも同時に付け替えること。
+  check:
+    name: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # packageManager フィールドから pnpm のバージョンを読む。
+      # setup-node の cache: pnpm より先に実行する必要がある。
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm run check
+
+      - run: pnpm run build

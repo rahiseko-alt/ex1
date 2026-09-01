@@ -1,0 +1,30 @@
+{
+  "name": "from-0",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Claude Code と Codex で共用できる、AGENTS.md を正本とする公式準拠のリポジトリ雛形",
+  "packageManager": "pnpm@10.33.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "plan:progress": "node scripts/plan-cli.mjs progress",
+    "plan:next": "node scripts/plan-cli.mjs next-item",
+    "plan:next-id": "node scripts/plan-cli.mjs next-id",
+    "plan:parallel": "node scripts/plan-cli.mjs parallel",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "check": "pnpm run format:check && pnpm run typecheck && pnpm run test"
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "prettier": "^3.6.2",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11"
+  }
+}
