@@ -178,14 +178,29 @@ function renderRow(row: CustomerRow): string {
 }
 
 customers.get('/customers', async (c) => {
-  const rows = await listCustomers(c.env.DB);
+  const keyword = c.req.query('q') ?? '';
+  const rows = await listCustomers(c.env.DB, keyword);
   const head = LIST_COLUMNS.map((column) => `<th>${column.label}</th>`).join('');
+
+  // 探した結果が0件のときは、登録が0件なのか探して見つからないのかを言い分ける。
+  const count =
+    keyword.trim() === ''
+      ? `${rows.length}件`
+      : `「${escapeHtml(keyword.trim())}」で探して ${rows.length}件`;
 
   return c.html(
     page(
       '顧客の一覧',
       `    <h1>顧客の一覧</h1>
-    <p>${rows.length}件</p>
+    <form method="get" action="/customers">
+      <p>
+        <label for="f-q">名前や会社名で探す</label><br />
+        <input id="f-q" name="q" type="search" value="${escapeHtml(keyword)}" />
+        <button type="submit">探す</button>
+        ${keyword.trim() === '' ? '' : '<a href="/customers">全部を見る</a>'}
+      </p>
+    </form>
+    <p>${count}</p>
     <table>
       <thead>
         <tr>${head}</tr>

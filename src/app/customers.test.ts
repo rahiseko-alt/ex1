@@ -539,6 +539,99 @@ describe('入力のまちがいをその場で知らせる', () => {
   });
 });
 
+describe('顧客を名前や会社名で探せる', () => {
+  const people = [
+    { name: '山田太郎', company: '山田工務店' },
+    { name: '山田花子', company: 'やまだ商事' },
+    { name: '鈴木一郎', company: '鈴木商店' },
+    { name: '佐藤次郎', company: '山田興産' },
+    { name: '田中三郎', company: '田中製作所' },
+  ];
+
+  async function withFive(): Promise<Env> {
+    const { env } = newEnv();
+    for (const person of people) {
+      await app.request('/customers', form(person), env);
+    }
+    return env;
+  }
+
+  async function search(env: Env, keyword: string): Promise<string> {
+    return await (await app.request(`/customers?q=${encodeURIComponent(keyword)}`, {}, env)).text();
+  }
+
+  it('一覧に検索欄がある', async () => {
+    const { env } = newEnv();
+    const html = await (await app.request('/customers', {}, env)).text();
+    expect(html).toContain('name="q"');
+    expect(html).toContain('<button type="submit">探す</button>');
+  });
+
+  it('「山田」で探すと山田を含む顧客だけが並ぶ', async () => {
+    const env = await withFive();
+    const html = await search(env, '山田');
+
+    expect(html).toContain('山田太郎');
+    expect(html).toContain('山田花子');
+    expect(html).toContain('佐藤次郎'); // 会社名が「山田興産」
+    expect(html).not.toContain('鈴木一郎');
+    expect(html).not.toContain('田中三郎');
+  });
+
+  it('探した件数が出る', async () => {
+    const env = await withFive();
+    expect(await search(env, '山田')).toContain('で探して 3件');
+  });
+
+  it('会社名だけが当たる場合も拾う', async () => {
+    const env = await withFive();
+    const html = await search(env, '鈴木商店');
+    expect(html).toContain('鈴木一郎');
+    expect(html).not.toContain('山田太郎');
+  });
+
+  it('見つからないときは0件と出る', async () => {
+    const env = await withFive();
+    const html = await search(env, '存在しない名前');
+    expect(html).toContain('で探して 0件');
+  });
+
+  it('検索欄を空にすると全部に戻る', async () => {
+    const env = await withFive();
+    const html = await search(env, '');
+    expect(html).toContain('5件');
+    for (const person of people) {
+      expect(html).toContain(person.name);
+    }
+  });
+
+  it('前後の空白は無視する', async () => {
+    const env = await withFive();
+    expect(await search(env, '  山田  ')).toContain('で探して 3件');
+  });
+
+  it('打った言葉が検索欄に残る', async () => {
+    const env = await withFive();
+    expect(await search(env, '山田')).toContain('value="山田"');
+  });
+
+  it('% を打っても全件にはならない（記号として扱う）', async () => {
+    const env = await withFive();
+    expect(await search(env, '%')).toContain('で探して 0件');
+  });
+
+  it('_ を打っても1文字ぶんの当たりにはならない', async () => {
+    const env = await withFive();
+    expect(await search(env, '_')).toContain('で探して 0件');
+  });
+
+  it('探した言葉の記号もそのまま画面に出さない', async () => {
+    const env = await withFive();
+    const html = await search(env, '<script>x</script>');
+    expect(html).not.toContain('<script>x</script>');
+  });
+});
+
 describe('escapeHtml', () => {
   it('記号を安全な書き方に直す', () => {
     expect(escapeHtml('<a href="x">&\'')).toBe('&lt;a href=&quot;x&quot;&gt;&amp;&#39;');
