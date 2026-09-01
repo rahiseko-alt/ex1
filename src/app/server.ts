@@ -1,8 +1,10 @@
 /**
  * 画面を返す入口。Cloudflare Workers 上で動かすため、Node の http ではなく
- * fetch ハンドラの形にしている（`export default { fetch }` が Workers の約束事）。
+ * fetch ハンドラの形にしている（`export default app` で Hono がその形を満たす）。
  */
 import { Hono } from 'hono';
+
+import { customers } from './customers.js';
 
 export const app = new Hono();
 
@@ -17,10 +19,13 @@ app.get('/', (c) =>
   </head>
   <body>
     <h1>顧客管理</h1>
+    <p><a href="/customers/new">顧客を登録する</a></p>
   </body>
 </html>
 `,
   ),
 );
+
+app.route('/', customers);
 
 export default app;
