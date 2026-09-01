@@ -1,0 +1,372 @@
+{
+  "goal": "docs/decisions.md「15.」に確定した5手段の未実装部分が全て配線され、非エンジニアが進捗・完了判定・見送りを実物で確認できる状態",
+  "items": [
+    {
+      "id": "T001",
+      "title": "並列実行の手順をAGENTS.mdに追記する",
+      "deliverable": "並列にしてよい条件、Workflowのparallel()の呼び方、isolation: worktreeの指定方法がAGENTS.mdに書かれている状態",
+      "verify": [
+        "AGENTS.mdを開き、並列実行に関する節があることを確認する",
+        "書かれた手順どおりにWorkflowを呼び出せることを目視で確認する"
+      ],
+      "dependsOn": [],
+      "files": ["AGENTS.md"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T002",
+      "title": "canRunInParallelを呼ぶCLIコマンドを追加する",
+      "deliverable": "コマンドを実行すると、今並列に進めてよい項目の組がdocs/plan.jsonから一覧できる状態",
+      "verify": [
+        "依存関係が無くファイルも重ならない2項目を含むdocs/plan.jsonを用意する",
+        "コマンドを実行し、その2項目が組として表示されることを確認する",
+        "依存関係やファイル重複がある項目は組として出ないことを確認する"
+      ],
+      "dependsOn": [],
+      "files": ["src/plan-cli/parallel.ts", "package.json"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T003",
+      "title": "並列候補コマンドのテストを書く",
+      "deliverable": "T002のコマンドを検証する単体テストがある状態",
+      "verify": ["pnpm run testを実行し、新しいテストが通ることを確認する"],
+      "dependsOn": ["T002"],
+      "files": ["src/plan-cli/parallel.test.ts"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T004",
+      "title": "/checkinに並列候補の提示を追加する",
+      "deliverable": "/checkinを実行すると、並列に進められる組み合わせがあれば提示される状態",
+      "verify": [
+        "並列候補がある状態で/checkinを実行し、候補が提示されることを確認する",
+        "候補が無いdocs/plan.jsonでは何も提示されないことを確認する"
+      ],
+      "dependsOn": ["T002"],
+      "files": [".claude/skills/checkin/SKILL.md"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T005",
+      "title": "実際に2項目を並列で走らせて動作確認する",
+      "deliverable": "Workflowのparallel()で実際に2つの独立項目を同時に完了させた記録がある状態",
+      "verify": [
+        "依存もファイル重複も無い2項目をparallel()で同時に実行する",
+        "両方完了後、git statusでファイルが衝突していないことを確認する",
+        "結果をdocs/decisions.mdに記録する"
+      ],
+      "dependsOn": ["T001"],
+      "files": ["docs/decisions.md"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T006",
+      "title": "/goalの使い方をAGENTS.mdに追記する",
+      "deliverable": "1項目に着手する際、完了条件を/goalで宣言する手順が書かれている状態",
+      "verify": [
+        "AGENTS.mdに手順があることを確認する",
+        "実際に1項目で試し、/goalが正しく「満たした」と判定することを確認する"
+      ],
+      "dependsOn": [],
+      "files": ["AGENTS.md"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T007",
+      "title": "「/checkoutでcompletion-checkerを呼ぶ」フローが実際に機能することを確認する",
+      "deliverable": ".claude/skills/checkout/SKILL.mdに既に書かれている完了判定フロー（completion-checker呼び出し→判定結果でstatus更新）が、書かれたとおりに動くことを実地で確認した記録がある状態",
+      "verify": [
+        "docs/plan.jsonの適当な項目を1つ完了させた状態で/checkoutを実行する",
+        "completion-checkerが自動的に呼ばれ、verify手順をなぞった証拠が出力されることを確認する",
+        "判定が通った場合はstatusがdoneに、通らない場合はtodoのままになることを確認する",
+        "automationがhumanの項目ではawaiting_humanになることを確認する"
+      ],
+      "dependsOn": [],
+      "files": [".claude/skills/checkout/SKILL.md"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T009",
+      "title": "verifyの書き方を機械的にチェックする関数を追加する",
+      "deliverable": "「テストが通る」のように対象コマンドや期待結果を示さない書き方のverifyをvalidatePlanが拒否する状態。ただし『pnpm run testを実行し、〜が通ることを確認する』のように対象と期待結果を示すものは許容する（テスト追加そのものが目的の項目まで拒否しない）",
+      "verify": [
+        "対象コマンドも期待結果も書かれていない曖昧な書き方のverifyを含むdocs/plan.jsonでpnpm run testを実行し、エラーになることを確認する",
+        "docs/plan.jsonのT003・T010・T012のような『pnpm run testを実行し、〜を確認する』という書き方は通ることを確認する"
+      ],
+      "dependsOn": [],
+      "files": ["src/plan.ts"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T010",
+      "title": "verifyチェックのテストを書く",
+      "deliverable": "T009のチェックを検証するテストケースがある状態",
+      "verify": ["pnpm run testで新しいテストが通ることを確認する"],
+      "dependsOn": ["T009"],
+      "files": ["src/plan.test.ts"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T011",
+      "title": "countProgressを呼ぶCLIコマンドを追加する",
+      "deliverable": "コマンドを実行すると、初期/追加項目それぞれの完了数と人間確認待ちの一覧が表示される状態",
+      "verify": [
+        "完了・未完了・人間確認待ちが混在するdocs/plan.jsonを用意する",
+        "コマンドを実行し、正しい数値と一覧が表示されることを確認する"
+      ],
+      "dependsOn": [],
+      "files": ["src/plan-cli/progress.ts", "package.json"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T012",
+      "title": "進捗表示コマンドのテストを書く",
+      "deliverable": "T011のコマンドを検証する単体テストがある状態",
+      "verify": ["pnpm run testで新しいテストが通ることを確認する"],
+      "dependsOn": ["T011"],
+      "files": ["src/plan-cli/progress.test.ts"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T013",
+      "title": "進捗表示から専門用語を無くす",
+      "deliverable": "表示にidやstatusのような内部用語がそのまま出ず、「終わった」「まだ」等の日本語の文章で進み具合が表現される状態",
+      "verify": [
+        "表示結果にsrc/plan.tsの内部フィールド名がそのまま出ていないことを確認する",
+        "完了数・全体数・残り数が日本語の文章として表示されていることを確認する"
+      ],
+      "dependsOn": ["T011"],
+      "files": ["src/plan-cli/progress.ts"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T014",
+      "title": "非エンジニアに実際に見せて理解できるか確認する",
+      "deliverable": "実在の非エンジニアがこの画面を見て、今の進み具合を自分の言葉で説明できる状態",
+      "verify": ["実際に画面を見せ、進み具合を説明してもらう", "説明できなければT013に戻って直す"],
+      "dependsOn": ["T013"],
+      "files": ["src/plan-cli/progress.ts"],
+      "automation": "human",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T015",
+      "title": "/checkinがnextItemを実際に呼ぶよう書き換える",
+      "deliverable": "「次の1件を選ぶ」手順が、文章の指示ではなくnextItem関数の呼び出しになっている状態",
+      "verify": [
+        "依存を満たしたtodo項目が複数あるdocs/plan.jsonで/checkinを実行する",
+        "nextItemの結果がそのまま次の1件として提示されることを確認する"
+      ],
+      "dependsOn": ["T027"],
+      "files": [".claude/skills/checkin/SKILL.md"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T016",
+      "title": "追記手順にnextIdの利用を明記する",
+      "deliverable": "新しい項目を追記するとき、AIが手で番号を決めずnextIdの結果を使うことがAGENTS.mdに明記されている状態",
+      "verify": [
+        "AGENTS.mdの記述を確認する",
+        "実際に追記してみて番号が既存最大値+1になることを確認する"
+      ],
+      "dependsOn": ["T017"],
+      "files": ["AGENTS.md"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T017",
+      "title": "nextIdを呼ぶCLIコマンドを追加する",
+      "deliverable": "コマンドを実行すると、次に振るべき番号がわかる状態",
+      "verify": ["コマンドを実行し、既存最大値+1が表示されることを確認する"],
+      "dependsOn": [],
+      "files": ["src/plan-cli/next-id.ts", "package.json"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T018",
+      "title": "進捗と見送り件数を確認するRoutineを作成する",
+      "deliverable": "定期的にdocs/plan.jsonとdocs/neglected-log.mdを確認するRoutineが実在する状態",
+      "verify": ["claude.ai/code/routinesまたは/scheduleでRoutineが作成されていることを確認する"],
+      "dependsOn": ["T011"],
+      "files": ["AGENTS.md"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T019",
+      "title": "Routineを手動実行して通知が届くことを確認する",
+      "deliverable": "Routineを1回実行すると、通知が実際に届く状態",
+      "verify": ["Run nowでRoutineを実行し、通知が届くことを目視で確認する"],
+      "dependsOn": ["T018"],
+      "files": ["AGENTS.md"],
+      "automation": "human",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T020",
+      "title": "全項目done時の通知内容を確認する",
+      "deliverable": "ゴール到達時に通知の文言がそれとわかる内容に変わる状態",
+      "verify": [
+        "全項目をdoneにした状態でRoutineを実行し、通知文言がゴール到達を示すことを確認する"
+      ],
+      "dependsOn": ["T019"],
+      "files": ["AGENTS.md"],
+      "automation": "human",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T021",
+      "title": "Gate抵触検出の設計メモを書く",
+      "deliverable": "test-policy.mdのGateに触れたがヒヤリハットで済んだ場面を、何をトリガーに何を見て検出するかの設計メモがある状態",
+      "verify": ["設計メモを読み、検出方法が具体的に書かれていることを確認する"],
+      "dependsOn": [],
+      "files": ["docs/decisions.md"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T022",
+      "title": "Gate抵触検出フックを実装する",
+      "deliverable": "設計どおりのフックが実際に動き、.claude/settings.jsonに登録されて自動発火する状態",
+      "verify": [
+        "わざとGateに触れる状況を再現し、フックが反応することを確認する",
+        ".claude/settings.jsonのhooksにneglect-check.shが登録されていることを確認する"
+      ],
+      "dependsOn": ["T021"],
+      "files": [".claude/hooks/neglect-check.sh", ".claude/settings.json"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T023",
+      "title": "台帳に書かれないまま/checkoutが進むのを止める",
+      "deliverable": "neglected-log.mdへの記入が無いまま/checkoutしようとすると警告される状態",
+      "verify": [
+        "記入せずに/checkoutを試し、警告が出ることを確認する",
+        "記入後は警告が出ないことを確認する"
+      ],
+      "dependsOn": ["T022"],
+      "files": [".claude/hooks/handoff-check.sh"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T024",
+      "title": "AskUserQuestionの使用をAGENTS.mdに明記する",
+      "deliverable": "専門的な内容を聞くときは選択肢付きで聞く、という実践がAGENTS.mdに明文化されている状態",
+      "verify": ["AGENTS.mdの該当節を確認する"],
+      "dependsOn": [],
+      "files": ["AGENTS.md"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T025",
+      "title": "質問スタイル検査の設計メモを書く",
+      "deliverable": "何をもって「非エンジニアに答えられない聞き方」と判定するかの設計メモがある状態",
+      "verify": ["設計メモを読み、具体的な判定基準が書かれていることを確認する"],
+      "dependsOn": [],
+      "files": ["docs/decisions.md"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T026",
+      "title": "質問スタイルを検査するフックを実装する",
+      "deliverable": "設計どおりのフックが実際に動き、.claude/settings.jsonに登録されて自動発火する状態",
+      "verify": [
+        "専門用語だけの質問をさせてみて、フックが反応することを確認する",
+        "平易な説明＋選択肢の質問は通ることを確認する",
+        ".claude/settings.jsonのhooksにquestion-style-check.shが登録されていることを確認する"
+      ],
+      "dependsOn": ["T025", "T024"],
+      "files": [".claude/hooks/question-style-check.sh", ".claude/settings.json"],
+      "automation": "human",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T027",
+      "title": "nextItemを呼ぶCLIコマンドを追加する",
+      "deliverable": "コマンドを実行すると、依存を満たしたtodo項目の中から次に着手すべき1件がわかる状態",
+      "verify": [
+        "依存関係を満たしたtodo項目が複数あるdocs/plan.jsonでコマンドを実行する",
+        "正しい1件が表示されることを確認する",
+        "依存先が未完了の項目が選ばれないことを確認する"
+      ],
+      "dependsOn": [],
+      "files": ["src/plan-cli/next-item.ts", "package.json"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "initial"
+    },
+    {
+      "id": "T028",
+      "title": "確かめ方の書き方が機械で弾かれることを/plan-initに明記する",
+      "deliverable": ".claude/skills/plan-init/SKILL.md に、確かめ方の書き方が機械で検査され、条件を満たさないと検証が落ちることと、その条件が書かれている状態",
+      "verify": [
+        ".claude/skills/plan-init/SKILL.md を開き、確かめ方が機械で検査されると書かれていることを確認する",
+        "書かれている条件が、src/plan.ts の validateVerifySteps の実際の判定と一致していることを確認する"
+      ],
+      "dependsOn": [],
+      "files": [".claude/skills/plan-init/SKILL.md"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "added"
+    },
+    {
+      "id": "T029",
+      "title": "引継ぎ本文に自動記録の目印を書かない注意を/handoffに入れる",
+      "deliverable": ".claude/skills/handoff/SKILL.md に、docs/handoff.md の本文へ自動記録の目印そのものを書いてはいけないことが書かれている状態",
+      "verify": [
+        ".claude/skills/handoff/SKILL.md を開き、目印を本文に書かない注意があることを確認する",
+        "その注意が、書いた場合に何が起きるか（本文が切り落とされる）まで説明していることを確認する"
+      ],
+      "dependsOn": [],
+      "files": [".claude/skills/handoff/SKILL.md"],
+      "automation": "ci",
+      "status": "done",
+      "origin": "added"
+    }
+  ]
+}
