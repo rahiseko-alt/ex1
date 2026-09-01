@@ -30,3 +30,20 @@ export async function listTableNames(db: D1Database): Promise<string[]> {
     .all<{ name: string }>();
   return results.map((row) => row.name);
 }
+
+/** 顧客を1件書き込む。空欄は空文字で埋める（表の既定値と揃える）。 */
+export async function insertCustomer(
+  db: D1Database,
+  input: Pick<CustomerRow, 'name' | 'company' | 'phone' | 'email' | 'note'>,
+): Promise<void> {
+  await db
+    .prepare('INSERT INTO customers (name, company, phone, email, note) VALUES (?, ?, ?, ?, ?)')
+    .bind(input.name, input.company, input.phone, input.email, input.note)
+    .run();
+}
+
+/** 顧客を名前順で全件返す。 */
+export async function listCustomers(db: D1Database): Promise<CustomerRow[]> {
+  const { results } = await db.prepare('SELECT * FROM customers ORDER BY name').all<CustomerRow>();
+  return results;
+}
