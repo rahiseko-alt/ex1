@@ -29,7 +29,12 @@ function fakeD1(sqlite: DatabaseSync): D1Database {
 
 function newEnv(): { env: Env; sqlite: DatabaseSync } {
   const sqlite = new DatabaseSync(':memory:');
+  // SQLite は既定で外部キーを見ない。D1 は見るので、こちらも明示的に揃えておく。
+  sqlite.exec('PRAGMA foreign_keys = ON');
+  // 実物（pnpm run db:setup）と同じく migration を全部当てる。
+  // 詳細画面がやり取りの一覧も出すため、customers だけでは足りない。
   sqlite.exec(readFileSync(join(repoRoot, 'migrations', '0001_customers.sql'), 'utf8'));
+  sqlite.exec(readFileSync(join(repoRoot, 'migrations', '0002_history.sql'), 'utf8'));
   return { env: { DB: fakeD1(sqlite) }, sqlite };
 }
 

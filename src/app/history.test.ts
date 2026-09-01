@@ -1,0 +1,224 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
+import { fileURLToPath } from 'node:url';
+
+import { describe, expect, it } from 'vitest';
+
+import { MAX_BODY_LENGTH, validateHistory } from './history.js';
+import type { Env } from './db.js';
+import app from './server.js';
+
+const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
+
+/** 手元の SQLite を D1 のふりをさせる（`customers.test.ts` と同じ作り）。 */
+function fakeD1(sqlite: DatabaseSync): D1Database {
+  const statement = (sql: string, params: SQLInputValue[]) => ({
+    bind: (...args: SQLInputValue[]) => statement(sql, args),
+    run: async () => sqlite.prepare(sql).run(...params),
+    all: async () => ({ results: sqlite.prepare(sql).all(...params) }),
+    first: async () => sqlite.prepare(sql).get(...params) ?? null,
+  });
+  return {
+    prepare: (sql: string) => statement(sql, []),
+  } as unknown as D1Database;
+}
+
+/** 顧客を1人だけ登録した状態から始める。やり取りは必ず誰かにぶら下がるため。 */
+function newEnv(name = '山田太郎'): { env: Env; sqlite: DatabaseSync; id: number } {
+  const sqlite = new DatabaseSync(':memory:');
+  sqlite.exec('PRAGMA foreign_keys = ON');
+  sqlite.exec(readFileSync(join(repoRoot, 'migrations', '0001_customers.sql'), 'utf8'));
+  sqlite.exec(readFileSync(join(repoRoot, 'migrations', '0002_history.sql'), 'utf8'));
+  sqlite.prepare('INSERT INTO customers (name) VALUES (?)').run(name);
+  const row = sqlite.prepare('SELECT id FROM customers WHERE name = ?').get(name) as { id: number };
+  return { env: { DB: fakeD1(sqlite) }, sqlite, id: row.id };
+}
+
+function form(values: Record<string, string>): RequestInit {
+  return {
+    method: 'POST',
+    body: new URLSearchParams(values),
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+  };
+}
+
+describe('やり取りの入力検査', () => {
+  it('日付と内容がそろっていれば通る', () => {
+    expect(validateHistory({ happened_on: '2026-03-20', body: '電話で相談を受けた' })).toEqual([]);
+  });
+
+  it('日付が空だと知らせる', () => {
+    const errors = validateHistory({ happened_on: '', body: '電話' });
+    expect(errors.map((error) => error.field)).toEqual(['happened_on']);
+    expect(errors[0]?.message).toContain('日付');
+  });
+
+  it('内容が空だと知らせる', () => {
+    const errors = validateHistory({ happened_on: '2026-03-20', body: '   ' });
+    expect(errors.map((error) => error.field)).toEqual(['body']);
+  });
+
+  it('日付の形が違うと知らせる', () => {
+    expect(validateHistory({ happened_on: '2026/03/20', body: '電話' })).toEqual([
+      { field: 'happened_on', message: expect.stringContaining('日付の形') },
+    ]);
+  });
+
+  it('存在しない日は通さない', () => {
+    expect(validateHistory({ happened_on: '2026-02-31', body: '電話' })).toEqual([
+      { field: 'happened_on', message: expect.stringContaining('日付の形') },
+    ]);
+  });
+
+  it('内容が長すぎると知らせる', () => {
+    const errors = validateHistory({
+      happened_on: '2026-03-20',
+      body: 'あ'.repeat(MAX_BODY_LENGTH + 1),
+    });
+    expect(errors.map((error) => error.field)).toEqual(['body']);
+  });
+
+  it('まちがいは一度に全部返す', () => {
+    expect(validateHistory({ happened_on: '', body: '' })).toHaveLength(2);
+  });
+});
+
+describe('顧客にやり取りを1件書ける', () => {
+  it('詳細画面に「やり取りを追加」の入力欄がある', async () => {
+    const { env, id } = newEnv();
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html).toContain(`action="/customers/${id}/history"`);
+    expect(html).toContain('name="happened_on"');
+    expect(html).toContain('name="body"');
+    expect(html).toContain('<button type="submit">やり取りを追加</button>');
+  });
+
+  it('やり取りがまだ無いときはそう書いてある', async () => {
+    const { env, id } = newEnv();
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html).toContain('まだありません。');
+  });
+
+  it('保存すると置き場に書き込まれる', async () => {
+    const { env, sqlite, id } = newEnv();
+    const res = await app.request(
+      `/customers/${id}/history`,
+      form({ happened_on: '2026-03-20', body: '電話で相談を受けた' }),
+      env,
+    );
+    expect(res.status).toBe(303);
+    expect(res.headers.get('location')).toBe(`/customers/${id}`);
+
+    const row = sqlite.prepare('SELECT * FROM history').get() as Record<string, unknown>;
+    expect(row['customer_id']).toBe(id);
+    expect(row['happened_on']).toBe('2026-03-20');
+    expect(row['body']).toBe('電話で相談を受けた');
+  });
+
+  it('保存したやり取りが同じ画面に出る', async () => {
+    const { env, id } = newEnv();
+    await app.request(
+      `/customers/${id}/history`,
+      form({ happened_on: '2026-03-20', body: '電話で相談を受けた' }),
+      env,
+    );
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html).toContain('2026-03-20');
+    expect(html).toContain('電話で相談を受けた');
+    expect(html).toContain('1件');
+  });
+
+  it('同じ顧客に何件でも書ける', async () => {
+    const { env, id } = newEnv();
+    for (const day of ['2026-01-05', '2026-02-10', '2026-03-20']) {
+      await app.request(
+        `/customers/${id}/history`,
+        form({ happened_on: day, body: `${day} の話` }),
+        env,
+      );
+    }
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html).toContain('3件');
+    for (const day of ['2026-01-05', '2026-02-10', '2026-03-20']) {
+      expect(html).toContain(`${day} の話`);
+    }
+  });
+
+  it('別の顧客のやり取りは混ざらない', async () => {
+    const { env, sqlite, id } = newEnv();
+    sqlite.prepare('INSERT INTO customers (name) VALUES (?)').run('鈴木花子');
+    const other = (
+      sqlite.prepare('SELECT id FROM customers WHERE name = ?').get('鈴木花子') as {
+        id: number;
+      }
+    ).id;
+    await app.request(
+      `/customers/${id}/history`,
+      form({ happened_on: '2026-03-20', body: '山田の話' }),
+      env,
+    );
+    await app.request(
+      `/customers/${other}/history`,
+      form({ happened_on: '2026-03-21', body: '鈴木の話' }),
+      env,
+    );
+
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html).toContain('山田の話');
+    expect(html).not.toContain('鈴木の話');
+  });
+
+  it('日付や内容が空のままだと保存されず、その場で知らせる', async () => {
+    const { env, sqlite, id } = newEnv();
+    const res = await app.request(
+      `/customers/${id}/history`,
+      form({ happened_on: '', body: '' }),
+      env,
+    );
+    expect(res.status).toBe(400);
+    const html = await res.text();
+    expect(html).toContain('日付を入力してください');
+    expect(html).toContain('内容を入力してください');
+
+    const count = sqlite.prepare('SELECT COUNT(*) AS n FROM history').get() as { n: number };
+    expect(count.n).toBe(0);
+  });
+
+  it('やり直せるように、打った内容は画面に残る', async () => {
+    const { env, id } = newEnv();
+    const html = await (
+      await app.request(
+        `/customers/${id}/history`,
+        form({ happened_on: '', body: '書きかけの内容' }),
+        env,
+      )
+    ).text();
+    expect(html).toContain('書きかけの内容');
+  });
+
+  it('記号を書いても画面の作りが壊れない', async () => {
+    const { env, id } = newEnv();
+    await app.request(
+      `/customers/${id}/history`,
+      form({ happened_on: '2026-03-20', body: '<script>alert(1)</script>' }),
+      env,
+    );
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;');
+  });
+
+  it('居ない顧客のやり取りは書けない', async () => {
+    const { env } = newEnv();
+    expect(
+      (
+        await app.request(
+          '/customers/999/history',
+          form({ happened_on: '2026-03-20', body: '話' }),
+          env,
+        )
+      ).status,
+    ).toBe(404);
+  });
+});

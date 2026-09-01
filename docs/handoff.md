@@ -24,10 +24,10 @@
 ## いま何をしているか
 
 **顧客管理システム（ひとりで使う CRM）を作っている。全体計画 `docs/plan.json` は当初30項目
-＋追記1項目。当初分のうち `T001`〜`T011` が完了し、残り19項目。追記した `T031` は未着手。**
+＋追記1項目。当初分のうち `T001`〜`T012` が完了し、残り18項目。追記した `T031` は未着手。**
 
 **顧客の台帳（登録・一覧・検索・詳細・編集・削除・入力チェック）は一通り動く。**
-ここから「やり取りの履歴」（`T011`〜`T014`）に入り、置き場だけができた状態。
+「やり取りの履歴」（`T011`〜`T014`）に入り、置き場と「1件書く」までができた状態。
 `pnpm run db:setup` のあと `pnpm run dev` で http://localhost:8787 から使える。
 ネット上にはまだ置いていない（`T027`）。
 
@@ -38,7 +38,7 @@
 
 ## 完了したこと
 
-**`T001`〜`T011` を実装し、すべて `main` にマージ済み。**
+**`T001`〜`T012` を実装し、すべて `main` にマージ済み。**
 各項目は `completion-checker` が `verify` の手順をなぞって「通った」と判定したものだけを
 `done` にしてある（画面のある項目は実ブラウザ＝Playwright の chromium、置き場だけの項目は
 `db:setup` / `db:show` と実際の D1 への SQL で確かめた）。
@@ -56,6 +56,7 @@
 | `T009` | 入力のまちがいを知らせる                         | #12 |
 | `T010` | 名前や会社名で探せる                             | #13 |
 | `T011` | やり取りの記録の置き場（D1 の `history`）        | #15 |
+| `T012` | 詳細画面からやり取りを1件書ける                  | #16 |
 
 - **スタックを決めて `docs/decisions.md`「4-b.」「4-c.」に記録**
   — Cloudflare Workers ＋ Hono ＋ サーバー側で HTML を組み立てる／表の形は `migrations/*.sql` が正本
@@ -67,16 +68,22 @@
   — `migrations/0002_history.sql`。`customer_id` / `happened_on`（やり取りがあった日）/ `body`。
   顧客を消すとその人のやり取りも消える（`ON DELETE CASCADE`）。`(customer_id, happened_on DESC)`
   に索引を張ってある（`T013` の「新しい順」で使う）。画面はまだ無い
-- `pnpm run check`（135テスト） / `pnpm run build` 通過
+- **`T012`（詳細画面からやり取りを1件書ける）を追加**（このセッション）
+  — `src/app/history.ts`（置き場への読み書きと入力検査）＋ `src/app/customers.ts`（画面）。
+  保存先は `POST /customers/:id/history`。日付と内容は必須で、`2026-02-31` のような
+  実在しない日は通さない。**一覧は日付の新しい順に出しているので、`T013` は新規の実装ではなく
+  確認だけで済む見込み**（`status` は `todo` のまま。判定は次のセッションの `completion-checker` が出す）
+- `pnpm run check`（152テスト） / `pnpm run build` 通過
 
 ## 次にやること
 
-**`pnpm run plan:next` が出す1件に着手する。いまは `T012`（顧客にやり取りを1件書ける）。**
+**`pnpm run plan:next` が出す1件に着手する。いまは `T013`（やり取りが新しい順に並ぶ）。**
 
-置き場（`history` 表）はもう出来ている。`T012` は画面側の仕事で、詳細画面に
-「やり取りを追加」の入力欄（日付と内容）を足し、保存したものが同じ画面に出るようにする。
-触るファイルは `src/app/history.ts` `src/app/history.test.ts` `src/app/customers.ts`。
-表の列名は `customer_id` / `happened_on` / `body`（`src/app/db.ts` の `HistoryRow` 参照）。
+`T013` は実装済みの可能性が高い。`listHistory`（`src/app/history.ts`）が
+`ORDER BY happened_on DESC, id DESC` で引いているため、日付がばらばらでも新しい順に出るはず。
+**ただし自分で「済」と判断しないこと。** `verify`（同じ顧客に日付の違うやり取りを3件、順番を
+ばらばらに書く → 詳細画面を開き直す → 新しいものから並ぶ）を `completion-checker` に
+なぞらせ、通ったときだけ `done` にする。通らなければ並べ替えを直す。
 
 ### ユーザーに聞いたほうがよいこと
 
@@ -104,6 +111,9 @@
   調べ、その PID を `kill` する
 - **`rm -rf` はこの環境で拒否される。** 置き場を空にしたいときは `.wrangler/` を
   scratchpad へ `mv` して退ける
+- **`pgrep` / `kill` の対象を絞るときは、コマンド文字列に `wrangler` をそのまま書かない。**
+  `pgrep -f "wrangler dev"` は自分のシェル自身にも当たり、シェルごと死ぬ（exit 144。今回踏んだ）。
+  `pgrep -af "wrangl[e]r"` のように書いて PID を調べ、その PID を `kill` する
 - **`curl` はこの環境で拒否される。** HTTP の確認は `node -e` の `fetch` を使う
 - **実ブラウザの実行ファイルは `/opt/pw-browsers/chromium`**（`chromium/chrome-linux/chrome`
   ではない。symlink が実行ファイルを直接指している）。`playwright-core` はリポジトリには
