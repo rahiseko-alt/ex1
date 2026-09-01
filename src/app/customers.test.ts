@@ -389,6 +389,85 @@ describe('登録した内容を直せる', () => {
   });
 });
 
+describe('顧客を消せる（確認つき）', () => {
+  const person = { name: '山田太郎', company: '山田工務店', phone: '03-1234-5678' };
+
+  async function withPerson(): Promise<{ env: Env; id: string }> {
+    const { env } = newEnv();
+    await app.request('/customers', form(person), env);
+    const listHtml = await (await app.request('/customers', {}, env)).text();
+    const id = /href="\/customers\/(\d+)"/.exec(listHtml)?.[1];
+    if (id === undefined) throw new Error('一覧に詳細へのリンクが無い');
+    return { env, id };
+  }
+
+  it('詳細画面に「削除」への入口がある', async () => {
+    const { env, id } = await withPerson();
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html).toContain(`href="/customers/${id}/delete"`);
+  });
+
+  it('削除を押すと「本当に削除しますか」と聞き返される', async () => {
+    const { env, id } = await withPerson();
+    const html = await (await app.request(`/customers/${id}/delete`, {}, env)).text();
+
+    expect(html).toContain('本当に削除しますか');
+    expect(html).toContain(person.name);
+    expect(html).toContain('<button type="submit">はい、削除する</button>');
+  });
+
+  it('聞き返しの画面には「やめる」道もある', async () => {
+    const { env, id } = await withPerson();
+    const html = await (await app.request(`/customers/${id}/delete`, {}, env)).text();
+    expect(html).toContain(`href="/customers/${id}"`);
+  });
+
+  it('聞き返しの画面を開いただけでは消えない', async () => {
+    const { env, id } = await withPerson();
+    await app.request(`/customers/${id}/delete`, {}, env);
+
+    const html = await (await app.request('/customers', {}, env)).text();
+    expect(html).toContain(person.name);
+    expect(html).toContain('1件');
+  });
+
+  it('「はい」を押すと一覧から消える', async () => {
+    const { env, id } = await withPerson();
+    const res = await app.request(`/customers/${id}/delete`, { method: 'POST' }, env);
+    expect(res.status).toBe(303);
+
+    const html = await (await app.request('/customers', {}, env)).text();
+    expect(html).not.toContain(person.name);
+    expect(html).toContain('0件');
+  });
+
+  it('消したあとに詳細を開くと404になる', async () => {
+    const { env, id } = await withPerson();
+    await app.request(`/customers/${id}/delete`, { method: 'POST' }, env);
+
+    expect((await app.request(`/customers/${id}`, {}, env)).status).toBe(404);
+  });
+
+  it('いない顧客を消そうとすると404になる', async () => {
+    const { env } = newEnv();
+    expect((await app.request('/customers/999/delete', {}, env)).status).toBe(404);
+    expect((await app.request('/customers/999/delete', { method: 'POST' }, env)).status).toBe(404);
+  });
+
+  it('消すのは押した1件だけ', async () => {
+    const { env } = newEnv();
+    await app.request('/customers', form({ name: '甲' }), env);
+    await app.request('/customers', form({ name: '乙' }), env);
+    const listHtml = await (await app.request('/customers', {}, env)).text();
+    const id = /href="\/customers\/(\d+)"/.exec(listHtml)?.[1];
+
+    await app.request(`/customers/${id}/delete`, { method: 'POST' }, env);
+
+    const html = await (await app.request('/customers', {}, env)).text();
+    expect(html).toContain('1件');
+  });
+});
+
 describe('escapeHtml', () => {
   it('記号を安全な書き方に直す', () => {
     expect(escapeHtml('<a href="x">&\'')).toBe('&lt;a href=&quot;x&quot;&gt;&amp;&#39;');

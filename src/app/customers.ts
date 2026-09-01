@@ -7,6 +7,7 @@
 import { Hono } from 'hono';
 
 import {
+  deleteCustomer,
   findCustomer,
   insertCustomer,
   listCustomers,
@@ -194,7 +195,7 @@ customers.get('/customers/:id', async (c) => {
 ${details}
       </tbody>
     </table>
-    <p><a href="/customers/${row.id}/edit">編集</a></p>
+    <p><a href="/customers/${row.id}/edit">編集</a> ／ <a href="/customers/${row.id}/delete">削除</a></p>
     <p><a href="/customers">顧客の一覧へ戻る</a></p>`,
     ),
   );
@@ -231,4 +232,39 @@ customers.post('/customers/:id', async (c) => {
 
   // 書き換えたあとは詳細へ戻す。何がどう変わったかをその場で見せるため。
   return c.redirect(`/customers/${id}`, 303);
+});
+
+customers.get('/customers/:id/delete', async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.notFound();
+
+  const row = await findCustomer(c.env.DB, id);
+  if (row === null) return c.html(notFoundPage(), 404);
+
+  // ブラウザ標準の確認ダイアログではなく画面で聞き返す。
+  // ダイアログは機械から見えず、この項目を人手でしか確かめられなくなるため。
+  return c.html(
+    page(
+      `${row.name} を削除しますか`,
+      `    <h1>本当に削除しますか</h1>
+    <p>${escapeHtml(row.name)}${row.company === '' ? '' : `（${escapeHtml(row.company)}）`}を削除します。</p>
+    <p>やり取りの記録も一緒に消えます。元に戻せません。</p>
+    <form method="post" action="/customers/${row.id}/delete">
+      <p><button type="submit">はい、削除する</button></p>
+    </form>
+    <p><a href="/customers/${row.id}">やめる</a></p>`,
+    ),
+  );
+});
+
+customers.post('/customers/:id/delete', async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.notFound();
+
+  const row = await findCustomer(c.env.DB, id);
+  if (row === null) return c.html(notFoundPage(), 404);
+
+  await deleteCustomer(c.env.DB, id);
+
+  return c.redirect('/customers', 303);
 });

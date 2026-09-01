@@ -68,3 +68,8 @@ export async function updateCustomer(
     .bind(input.name, input.company, input.phone, input.email, input.note, id)
     .run();
 }
+
+/** 顧客を1件消す。 */
+export async function deleteCustomer(db: D1Database, id: number): Promise<void> {
+  await db.prepare('DELETE FROM customers WHERE id = ?').bind(id).run();
+}
