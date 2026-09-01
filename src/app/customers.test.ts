@@ -206,7 +206,10 @@ describe('顧客の一覧', () => {
 
   it('同じ行に名前と会社名が並ぶ', async () => {
     const { html } = await withThreeCustomers();
-    expect(html).toContain('<tr><td>山田太郎</td><td>山田工務店</td></tr>');
+    // 名前は詳細への入口（T006）になっているので、id を問わない形で見る。
+    expect(html).toMatch(
+      /<tr><td><a href="\/customers\/\d+">山田太郎<\/a><\/td><td>山田工務店<\/td><\/tr>/,
+    );
   });
 
   it('会社名が空でも行が出る', async () => {
@@ -214,7 +217,9 @@ describe('顧客の一覧', () => {
     await app.request('/customers', form({ name: '名無しの権兵衛' }), env);
 
     const html = await (await app.request('/customers', {}, env)).text();
-    expect(html).toContain('<tr><td>名無しの権兵衛</td><td></td></tr>');
+    expect(html).toMatch(
+      /<tr><td><a href="\/customers\/\d+">名無しの権兵衛<\/a><\/td><td><\/td><\/tr>/,
+    );
     expect(html).toContain('1件');
   });
 
@@ -225,6 +230,77 @@ describe('顧客の一覧', () => {
     const html = await (await app.request('/customers', {}, env)).text();
     expect(html).not.toContain('<b>乙</b>');
     expect(html).toContain('&lt;b&gt;');
+  });
+});
+
+describe('顧客1件の詳細', () => {
+  const person = {
+    name: '山田太郎',
+    company: '山田工務店',
+    phone: '03-1234-5678',
+    email: 'taro@example.com',
+    note: '紹介元は佐藤さん',
+  };
+
+  async function withPerson(): Promise<{ env: Env; id: string }> {
+    const { env } = newEnv();
+    await app.request('/customers', form(person), env);
+    const listHtml = await (await app.request('/customers', {}, env)).text();
+    const match = /href="\/customers\/(\d+)"/.exec(listHtml);
+    if (match?.[1] === undefined) throw new Error('一覧に詳細へのリンクが無い');
+    return { env, id: match[1] };
+  }
+
+  it('一覧の名前が詳細への入口になっている', async () => {
+    const { id } = await withPerson();
+    expect(Number(id)).toBeGreaterThan(0);
+  });
+
+  it('電話・メール・メモが全部出る', async () => {
+    const { env, id } = await withPerson();
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+
+    expect(html).toContain(person.phone);
+    expect(html).toContain(person.email);
+    expect(html).toContain(person.note);
+    expect(html).toContain(person.company);
+  });
+
+  it('見出しがその人の名前になる', async () => {
+    const { env, id } = await withPerson();
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html).toContain(`<h1>${person.name}</h1>`);
+  });
+
+  it('一覧へ戻る道がある', async () => {
+    const { env, id } = await withPerson();
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html).toContain('href="/customers"');
+  });
+
+  it('いない顧客を開くと404になり、一覧へ戻れる', async () => {
+    const { env } = newEnv();
+    const res = await app.request('/customers/999', {}, env);
+
+    expect(res.status).toBe(404);
+    expect(await res.text()).toContain('href="/customers"');
+  });
+
+  it('/customers/new は詳細と取り違えられない', async () => {
+    const { env } = newEnv();
+    const html = await (await app.request('/customers/new', {}, env)).text();
+    expect(html).toContain('<h1>顧客を登録する</h1>');
+  });
+
+  it('メモの記号もそのまま画面に出さない', async () => {
+    const { env } = newEnv();
+    await app.request('/customers', form({ name: '甲', note: '<img src=x>' }), env);
+    const listHtml = await (await app.request('/customers', {}, env)).text();
+    const id = /href="\/customers\/(\d+)"/.exec(listHtml)?.[1];
+
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html).not.toContain('<img src=x>');
+    expect(html).toContain('&lt;img');
   });
 });
 

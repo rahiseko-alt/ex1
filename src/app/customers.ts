@@ -6,7 +6,7 @@
  */
 import { Hono } from 'hono';
 
-import { insertCustomer, listCustomers, type CustomerRow, type Env } from './db.js';
+import { findCustomer, insertCustomer, listCustomers, type CustomerRow, type Env } from './db.js';
 
 /** 入力欄1つぶんの定義。画面と、保存処理の両方がこの並びを見る。 */
 interface Field {
@@ -110,7 +110,13 @@ const LIST_COLUMNS = [
 ] as const;
 
 function renderRow(row: CustomerRow): string {
-  const cells = LIST_COLUMNS.map((column) => `<td>${escapeHtml(row[column.key])}</td>`).join('');
+  // 名前だけを詳細への入口にする。行のどこを押しても飛ぶ作りは、
+  // あとで行に操作ボタンを足したときに誤操作の元になる。
+  const cells = LIST_COLUMNS.map((column) => {
+    const text = escapeHtml(row[column.key]);
+    const cell = column.key === 'name' ? `<a href="/customers/${row.id}">${text}</a>` : text;
+    return `<td>${cell}</td>`;
+  }).join('');
   return `        <tr>${cells}</tr>`;
 }
 
@@ -132,6 +138,50 @@ ${rows.map(renderRow).join('\n')}
       </tbody>
     </table>
     <p><a href="/customers/new">顧客を登録する</a></p>`,
+    ),
+  );
+});
+
+/** 詳細に出す項目。入力欄と同じ並びにして、見た目と入力の対応を保つ。 */
+const DETAIL_ROWS = [
+  { key: 'company', label: '会社名' },
+  { key: 'phone', label: '電話' },
+  { key: 'email', label: 'メール' },
+  { key: 'note', label: 'メモ' },
+] as const;
+
+customers.get('/customers/:id', async (c) => {
+  const id = Number(c.req.param('id'));
+  // 数字でない id は探しに行かない。/customers/new のような別の道と取り違えないため。
+  if (!Number.isInteger(id) || id <= 0) return c.notFound();
+
+  const row = await findCustomer(c.env.DB, id);
+  if (row === null) {
+    return c.html(
+      page(
+        '見つかりません',
+        `    <h1>見つかりません</h1>
+    <p>この顧客は削除されたか、もともと存在しません。</p>
+    <p><a href="/customers">顧客の一覧へ戻る</a></p>`,
+      ),
+      404,
+    );
+  }
+
+  const details = DETAIL_ROWS.map(
+    (detail) => `        <tr><th>${detail.label}</th><td>${escapeHtml(row[detail.key])}</td></tr>`,
+  ).join('\n');
+
+  return c.html(
+    page(
+      row.name,
+      `    <h1>${escapeHtml(row.name)}</h1>
+    <table>
+      <tbody>
+${details}
+      </tbody>
+    </table>
+    <p><a href="/customers">顧客の一覧へ戻る</a></p>`,
     ),
   );
 });
