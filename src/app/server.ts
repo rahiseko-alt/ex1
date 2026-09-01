@@ -5,8 +5,9 @@
 import { Hono } from 'hono';
 
 import { customers } from './customers.js';
+import type { Env } from './db.js';
 
-export const app = new Hono();
+export const app = new Hono<{ Bindings: Env }>();
 
 app.get('/', (c) =>
   c.html(
