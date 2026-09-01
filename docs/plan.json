@@ -1,372 +1,459 @@
 {
-  "goal": "docs/decisions.md「15.」に確定した5手段の未実装部分が全て配線され、非エンジニアが進捗・完了判定・見送りを実物で確認できる状態",
+  "goal": "顧客の台帳・やり取りの履歴・案件の進み具合を自分のブラウザから登録・検索・更新でき、ログインした自分だけが見られる形でネット上に置かれ、いつでも書き出して手元に持ち出せる状態",
   "items": [
     {
       "id": "T001",
-      "title": "並列実行の手順をAGENTS.mdに追記する",
-      "deliverable": "並列にしてよい条件、Workflowのparallel()の呼び方、isolation: worktreeの指定方法がAGENTS.mdに書かれている状態",
+      "title": "自分のパソコンで画面が1枚開く",
+      "deliverable": "コマンドを1つ実行するとブラウザに「顧客管理」という見出しのページが出る状態",
       "verify": [
-        "AGENTS.mdを開き、並列実行に関する節があることを確認する",
-        "書かれた手順どおりにWorkflowを呼び出せることを目視で確認する"
+        "pnpm run dev をターミナルで実行する",
+        "ブラウザで http://localhost:8787 を開く",
+        "「顧客管理」という見出しが表示されることを確認する"
       ],
       "dependsOn": [],
-      "files": ["AGENTS.md"],
+      "files": ["package.json", "wrangler.toml", "src/app/server.ts"],
       "automation": "ci",
-      "status": "done",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T002",
-      "title": "canRunInParallelを呼ぶCLIコマンドを追加する",
-      "deliverable": "コマンドを実行すると、今並列に進めてよい項目の組がdocs/plan.jsonから一覧できる状態",
+      "title": "顧客データの置き場をつくる",
+      "deliverable": "名前・会社名・電話・メール・メモを入れる空の保管場所（顧客の表）",
       "verify": [
-        "依存関係が無くファイルも重ならない2項目を含むdocs/plan.jsonを用意する",
-        "コマンドを実行し、その2項目が組として表示されることを確認する",
-        "依存関係やファイル重複がある項目は組として出ないことを確認する"
+        "pnpm run db:setup を実行する",
+        "pnpm run db:show を実行して表の一覧を出す",
+        "customers という表ができていることを確認する"
       ],
-      "dependsOn": [],
-      "files": ["src/plan-cli/parallel.ts", "package.json"],
+      "dependsOn": ["T001"],
+      "files": ["migrations/0001_customers.sql", "package.json", "src/app/db.ts"],
       "automation": "ci",
-      "status": "done",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T003",
-      "title": "並列候補コマンドのテストを書く",
-      "deliverable": "T002のコマンドを検証する単体テストがある状態",
-      "verify": ["pnpm run testを実行し、新しいテストが通ることを確認する"],
-      "dependsOn": ["T002"],
-      "files": ["src/plan-cli/parallel.test.ts"],
+      "title": "顧客を登録する入力欄",
+      "deliverable": "名前・会社名・電話・メール・メモを入力して「登録」を押せる画面（保存はまだしない）",
+      "verify": [
+        "ブラウザで /customers/new を開く",
+        "名前・会社名・電話・メール・メモの入力欄が並んでいることを確認する",
+        "「登録」ボタンが押せる状態になっていることを確認する"
+      ],
+      "dependsOn": ["T001"],
+      "files": ["src/app/customers.ts", "src/app/server.ts"],
       "automation": "ci",
-      "status": "done",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T004",
-      "title": "/checkinに並列候補の提示を追加する",
-      "deliverable": "/checkinを実行すると、並列に進められる組み合わせがあれば提示される状態",
+      "title": "登録した顧客が消えずに残る",
+      "deliverable": "「登録」を押すと入力が保管場所に書き込まれ、開き直しても残っている状態",
       "verify": [
-        "並列候補がある状態で/checkinを実行し、候補が提示されることを確認する",
-        "候補が無いdocs/plan.jsonでは何も提示されないことを確認する"
+        "/customers/new で名前に「山田太郎」と入れて登録を押す",
+        "ブラウザを閉じてから開き直す",
+        "山田太郎が消えずに残っていることを確認する"
       ],
-      "dependsOn": ["T002"],
-      "files": [".claude/skills/checkin/SKILL.md"],
+      "dependsOn": ["T002", "T003"],
+      "files": ["src/app/customers.ts", "src/app/db.ts", "src/app/customers.test.ts"],
       "automation": "ci",
-      "status": "done",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T005",
-      "title": "実際に2項目を並列で走らせて動作確認する",
-      "deliverable": "Workflowのparallel()で実際に2つの独立項目を同時に完了させた記録がある状態",
+      "title": "顧客の一覧が見られる",
+      "deliverable": "登録した顧客が名前と会社名つきで並ぶ一覧画面",
       "verify": [
-        "依存もファイル重複も無い2項目をparallel()で同時に実行する",
-        "両方完了後、git statusでファイルが衝突していないことを確認する",
-        "結果をdocs/decisions.mdに記録する"
+        "顧客を3件、名前を変えて登録する",
+        "ブラウザで /customers を開く",
+        "登録した3件すべてが並んでいることを確認する"
       ],
-      "dependsOn": ["T001"],
-      "files": ["docs/decisions.md"],
+      "dependsOn": ["T004"],
+      "files": ["src/app/customers.ts", "src/app/customers.test.ts"],
       "automation": "ci",
-      "status": "done",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T006",
-      "title": "/goalの使い方をAGENTS.mdに追記する",
-      "deliverable": "1項目に着手する際、完了条件を/goalで宣言する手順が書かれている状態",
+      "title": "顧客1件の詳細が見られる",
+      "deliverable": "一覧から名前を押すと、その人の電話・メール・メモが全部見える画面",
       "verify": [
-        "AGENTS.mdに手順があることを確認する",
-        "実際に1項目で試し、/goalが正しく「満たした」と判定することを確認する"
+        "一覧で「山田太郎」の名前を押す",
+        "山田太郎の電話・メール・メモが表示されることを確認する",
+        "ブラウザの戻るで一覧に戻れることを確認する"
       ],
-      "dependsOn": [],
-      "files": ["AGENTS.md"],
+      "dependsOn": ["T005"],
+      "files": ["src/app/customers.ts", "src/app/customers.test.ts"],
       "automation": "ci",
-      "status": "done",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T007",
-      "title": "「/checkoutでcompletion-checkerを呼ぶ」フローが実際に機能することを確認する",
-      "deliverable": ".claude/skills/checkout/SKILL.mdに既に書かれている完了判定フロー（completion-checker呼び出し→判定結果でstatus更新）が、書かれたとおりに動くことを実地で確認した記録がある状態",
+      "title": "登録した内容を直せる",
+      "deliverable": "詳細画面から入力欄を開いて書き換え、保存できる状態",
       "verify": [
-        "docs/plan.jsonの適当な項目を1つ完了させた状態で/checkoutを実行する",
-        "completion-checkerが自動的に呼ばれ、verify手順をなぞった証拠が出力されることを確認する",
-        "判定が通った場合はstatusがdoneに、通らない場合はtodoのままになることを確認する",
-        "automationがhumanの項目ではawaiting_humanになることを確認する"
+        "山田太郎の詳細画面で「編集」を押す",
+        "電話番号を別の番号に書き換えて保存を押す",
+        "詳細画面に新しい電話番号が出ていることを確認する"
       ],
-      "dependsOn": [],
-      "files": [".claude/skills/checkout/SKILL.md"],
+      "dependsOn": ["T006"],
+      "files": ["src/app/customers.ts", "src/app/customers.test.ts"],
       "automation": "ci",
-      "status": "done",
+      "status": "todo",
+      "origin": "initial"
+    },
+    {
+      "id": "T008",
+      "title": "顧客を消せる（誤操作を止める確認つき）",
+      "deliverable": "「削除」を押すと一度聞き返し、承知したときだけ消える状態",
+      "verify": [
+        "山田太郎の詳細画面で「削除」を押す",
+        "「本当に削除しますか」と聞き返されることを確認する",
+        "「はい」を押すと一覧から山田太郎が消えていることを確認する"
+      ],
+      "dependsOn": ["T006"],
+      "files": ["src/app/customers.ts", "src/app/customers.test.ts"],
+      "automation": "ci",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T009",
-      "title": "verifyの書き方を機械的にチェックする関数を追加する",
-      "deliverable": "「テストが通る」のように対象コマンドや期待結果を示さない書き方のverifyをvalidatePlanが拒否する状態。ただし『pnpm run testを実行し、〜が通ることを確認する』のように対象と期待結果を示すものは許容する（テスト追加そのものが目的の項目まで拒否しない）",
+      "title": "入力のまちがいをその場で知らせる",
+      "deliverable": "名前が空、またはメールの形が違うときに、何が悪いかを画面に出して保存を止める状態",
       "verify": [
-        "対象コマンドも期待結果も書かれていない曖昧な書き方のverifyを含むdocs/plan.jsonでpnpm run testを実行し、エラーになることを確認する",
-        "docs/plan.jsonのT003・T010・T012のような『pnpm run testを実行し、〜を確認する』という書き方は通ることを確認する"
+        "名前を空のまま登録ボタンを押す",
+        "「名前を入力してください」と画面に出ることを確認する",
+        "メール欄に abc とだけ入れて登録し、形式が違うと知らせることを確認する"
       ],
-      "dependsOn": [],
-      "files": ["src/plan.ts"],
+      "dependsOn": ["T004"],
+      "files": ["src/app/validate.ts", "src/app/validate.test.ts", "src/app/customers.ts"],
       "automation": "ci",
-      "status": "done",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T010",
-      "title": "verifyチェックのテストを書く",
-      "deliverable": "T009のチェックを検証するテストケースがある状態",
-      "verify": ["pnpm run testで新しいテストが通ることを確認する"],
-      "dependsOn": ["T009"],
-      "files": ["src/plan.test.ts"],
+      "title": "顧客を名前や会社名で探せる",
+      "deliverable": "一覧の上の検索欄に文字を入れると、それを含む顧客だけが残る状態",
+      "verify": [
+        "顧客を5件、別々の名前で登録しておく",
+        "一覧の検索欄に「山田」と入れる",
+        "山田を含む顧客だけが並んでいることを確認する"
+      ],
+      "dependsOn": ["T005"],
+      "files": ["src/app/customers.ts", "src/app/customers.test.ts"],
       "automation": "ci",
-      "status": "done",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T011",
-      "title": "countProgressを呼ぶCLIコマンドを追加する",
-      "deliverable": "コマンドを実行すると、初期/追加項目それぞれの完了数と人間確認待ちの一覧が表示される状態",
+      "title": "やり取りの記録の置き場をつくる",
+      "deliverable": "顧客1人につき何件でも「いつ・何を話したか」を入れられる空の保管場所",
       "verify": [
-        "完了・未完了・人間確認待ちが混在するdocs/plan.jsonを用意する",
-        "コマンドを実行し、正しい数値と一覧が表示されることを確認する"
+        "pnpm run db:setup を実行する",
+        "pnpm run db:show を実行して表の一覧を出す",
+        "history という表ができていることを確認する"
       ],
-      "dependsOn": [],
-      "files": ["src/plan-cli/progress.ts", "package.json"],
+      "dependsOn": ["T002"],
+      "files": ["migrations/0002_history.sql", "src/app/db.ts"],
       "automation": "ci",
-      "status": "done",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T012",
-      "title": "進捗表示コマンドのテストを書く",
-      "deliverable": "T011のコマンドを検証する単体テストがある状態",
-      "verify": ["pnpm run testで新しいテストが通ることを確認する"],
-      "dependsOn": ["T011"],
-      "files": ["src/plan-cli/progress.test.ts"],
+      "title": "顧客にやり取りを1件書ける",
+      "deliverable": "詳細画面から日付と内容を書いて保存でき、その場に出る状態",
+      "verify": [
+        "山田太郎の詳細画面を開く",
+        "「やり取りを追加」に日付と内容を入れて保存する",
+        "書いた内容が同じ画面に出ていることを確認する"
+      ],
+      "dependsOn": ["T006", "T011"],
+      "files": ["src/app/history.ts", "src/app/history.test.ts", "src/app/customers.ts"],
       "automation": "ci",
-      "status": "done",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T013",
-      "title": "進捗表示から専門用語を無くす",
-      "deliverable": "表示にidやstatusのような内部用語がそのまま出ず、「終わった」「まだ」等の日本語の文章で進み具合が表現される状態",
+      "title": "やり取りが新しい順に並ぶ",
+      "deliverable": "同じ顧客のやり取りが、日付の新しいものから上に並ぶ状態",
       "verify": [
-        "表示結果にsrc/plan.tsの内部フィールド名がそのまま出ていないことを確認する",
-        "完了数・全体数・残り数が日本語の文章として表示されていることを確認する"
+        "同じ顧客に日付の違うやり取りを3件、順番をばらばらに書く",
+        "詳細画面を開き直す",
+        "日付が新しいものから順に上から並んでいることを確認する"
       ],
-      "dependsOn": ["T011"],
-      "files": ["src/plan-cli/progress.ts"],
+      "dependsOn": ["T012"],
+      "files": ["src/app/history.ts", "src/app/history.test.ts"],
       "automation": "ci",
-      "status": "done",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T014",
-      "title": "非エンジニアに実際に見せて理解できるか確認する",
-      "deliverable": "実在の非エンジニアがこの画面を見て、今の進み具合を自分の言葉で説明できる状態",
-      "verify": ["実際に画面を見せ、進み具合を説明してもらう", "説明できなければT013に戻って直す"],
+      "title": "やり取りを直せる・消せる",
+      "deliverable": "書いたやり取りを後から書き換えたり消したりできる状態",
+      "verify": [
+        "やり取りの右にある「編集」を押して内容を書き換えて保存する",
+        "書き換えた内容に変わっていることを確認する",
+        "同じやり取りの「削除」を押し、一覧から消えることを確認する"
+      ],
       "dependsOn": ["T013"],
-      "files": ["src/plan-cli/progress.ts"],
-      "automation": "human",
-      "status": "done",
+      "files": ["src/app/history.ts", "src/app/history.test.ts"],
+      "automation": "ci",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T015",
-      "title": "/checkinがnextItemを実際に呼ぶよう書き換える",
-      "deliverable": "「次の1件を選ぶ」手順が、文章の指示ではなくnextItem関数の呼び出しになっている状態",
+      "title": "案件の置き場をつくる",
+      "deliverable": "案件名・顧客・進み具合の段階を入れられる空の保管場所",
       "verify": [
-        "依存を満たしたtodo項目が複数あるdocs/plan.jsonで/checkinを実行する",
-        "nextItemの結果がそのまま次の1件として提示されることを確認する"
+        "pnpm run db:setup を実行する",
+        "pnpm run db:show を実行して表の一覧を出す",
+        "deals という表ができていることを確認する"
       ],
-      "dependsOn": ["T027"],
-      "files": [".claude/skills/checkin/SKILL.md"],
+      "dependsOn": ["T002"],
+      "files": ["migrations/0003_deals.sql", "src/app/db.ts"],
       "automation": "ci",
-      "status": "done",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T016",
-      "title": "追記手順にnextIdの利用を明記する",
-      "deliverable": "新しい項目を追記するとき、AIが手で番号を決めずnextIdの結果を使うことがAGENTS.mdに明記されている状態",
+      "title": "顧客に案件をつくれる",
+      "deliverable": "詳細画面から案件名を書いて案件を1件つくれる状態",
       "verify": [
-        "AGENTS.mdの記述を確認する",
-        "実際に追記してみて番号が既存最大値+1になることを確認する"
+        "山田太郎の詳細画面で「案件を追加」を押す",
+        "案件名に「事務所の改装」と入れて保存する",
+        "その案件が山田太郎のものとして保存されたことを確認する"
       ],
-      "dependsOn": ["T017"],
-      "files": ["AGENTS.md"],
+      "dependsOn": ["T006", "T015"],
+      "files": ["src/app/deals.ts", "src/app/deals.test.ts", "src/app/customers.ts"],
       "automation": "ci",
-      "status": "done",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T017",
-      "title": "nextIdを呼ぶCLIコマンドを追加する",
-      "deliverable": "コマンドを実行すると、次に振るべき番号がわかる状態",
-      "verify": ["コマンドを実行し、既存最大値+1が表示されることを確認する"],
-      "dependsOn": [],
-      "files": ["src/plan-cli/next-id.ts", "package.json"],
+      "title": "案件の進み具合を変えられる",
+      "deliverable": "「問合せ中→見積提出→受注→失注」の段階を選び直せる状態",
+      "verify": [
+        "案件「事務所の改装」を開く",
+        "段階を「問合せ中」から「見積提出」に選び直して保存する",
+        "画面の表示が「見積提出」に変わっていることを確認する"
+      ],
+      "dependsOn": ["T016"],
+      "files": ["src/app/deals.ts", "src/app/deals.test.ts"],
       "automation": "ci",
-      "status": "done",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T018",
-      "title": "進捗と見送り件数を確認するRoutineを作成する",
-      "deliverable": "定期的にdocs/plan.jsonとdocs/neglected-log.mdを確認するRoutineが実在する状態",
-      "verify": ["claude.ai/code/routinesまたは/scheduleでRoutineが作成されていることを確認する"],
-      "dependsOn": ["T011"],
-      "files": ["AGENTS.md"],
+      "title": "案件を段階ごとに並べて見られる",
+      "deliverable": "案件の一覧が「問合せ中」「見積提出」などの段階ごとに分かれて見える画面",
+      "verify": [
+        "段階の違う案件を3件つくっておく",
+        "ブラウザで /deals を開く",
+        "3件がそれぞれ自分の段階の場所に並んでいることを確認する"
+      ],
+      "dependsOn": ["T017"],
+      "files": ["src/app/deals.ts", "src/app/deals.test.ts", "src/app/server.ts"],
       "automation": "ci",
-      "status": "done",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T019",
-      "title": "Routineを手動実行して通知が届くことを確認する",
-      "deliverable": "Routineを1回実行すると、通知が実際に届く状態",
-      "verify": ["Run nowでRoutineを実行し、通知が届くことを目視で確認する"],
-      "dependsOn": ["T018"],
-      "files": ["AGENTS.md"],
-      "automation": "human",
-      "status": "done",
+      "title": "顧客の画面にその人の案件が出る",
+      "deliverable": "顧客の詳細画面に、その顧客の案件が段階つきで並ぶ状態",
+      "verify": [
+        "山田太郎に案件を2件つくる",
+        "山田太郎の詳細画面を開く",
+        "2件の案件が段階つきで並んでいることを確認する"
+      ],
+      "dependsOn": ["T016"],
+      "files": ["src/app/customers.ts", "src/app/customers.test.ts"],
+      "automation": "ci",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T020",
-      "title": "全項目done時の通知内容を確認する",
-      "deliverable": "ゴール到達時に通知の文言がそれとわかる内容に変わる状態",
+      "title": "案件に金額と見込みの時期を入れられる",
+      "deliverable": "案件ごとに金額と「いつごろ決まりそうか」を記録できる状態",
       "verify": [
-        "全項目をdoneにした状態でRoutineを実行し、通知文言がゴール到達を示すことを確認する"
+        "案件「事務所の改装」に金額 500000 と時期を入れて保存する",
+        "案件の一覧を開く",
+        "金額と時期が表示されていることを確認する"
       ],
-      "dependsOn": ["T019"],
-      "files": ["AGENTS.md"],
-      "automation": "human",
-      "status": "done",
+      "dependsOn": ["T016"],
+      "files": ["src/app/deals.ts", "src/app/deals.test.ts", "migrations/0004_deal_amount.sql"],
+      "automation": "ci",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T021",
-      "title": "Gate抵触検出の設計メモを書く",
-      "deliverable": "test-policy.mdのGateに触れたがヒヤリハットで済んだ場面を、何をトリガーに何を見て検出するかの設計メモがある状態",
-      "verify": ["設計メモを読み、検出方法が具体的に書かれていることを確認する"],
-      "dependsOn": [],
-      "files": ["docs/decisions.md"],
-      "automation": "ci",
-      "status": "done",
+      "title": "どのページも同じ枠とメニューになる",
+      "deliverable": "全ページの上に「顧客」「案件」のメニューが出て、見た目がそろっている状態",
+      "verify": [
+        "顧客の一覧・詳細・案件の一覧をそれぞれ開く",
+        "どのページにも上に同じメニューが出ていることを確認する",
+        "3ページを見比べて、文字の大きさや余白がばらばらでないことを目で確認する"
+      ],
+      "dependsOn": ["T005", "T018"],
+      "files": ["src/app/layout.ts", "src/app/server.ts", "public/style.css"],
+      "automation": "human",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T022",
-      "title": "Gate抵触検出フックを実装する",
-      "deliverable": "設計どおりのフックが実際に動き、.claude/settings.jsonに登録されて自動発火する状態",
+      "title": "スマホの画面幅で崩れない",
+      "deliverable": "スマホの幅で開いても、文字がはみ出さず押すところに指が届く状態",
       "verify": [
-        "わざとGateに触れる状況を再現し、フックが反応することを確認する",
-        ".claude/settings.jsonのhooksにneglect-check.shが登録されていることを確認する"
+        "顧客の一覧をスマホの実機、または画面幅を375pxに狭めたブラウザで開く",
+        "文字や表が画面の外にはみ出していないことを確認する",
+        "「登録」ボタンを実際に指で押せる大きさか確認する"
       ],
       "dependsOn": ["T021"],
-      "files": [".claude/hooks/neglect-check.sh", ".claude/settings.json"],
-      "automation": "ci",
-      "status": "done",
+      "files": ["public/style.css"],
+      "automation": "human",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T023",
-      "title": "台帳に書かれないまま/checkoutが進むのを止める",
-      "deliverable": "neglected-log.mdへの記入が無いまま/checkoutしようとすると警告される状態",
+      "title": "まだ何も無いときの案内を出す",
+      "deliverable": "顧客も案件も0件のときに、次に何をすればよいか書かれた案内が出る状態",
       "verify": [
-        "記入せずに/checkoutを試し、警告が出ることを確認する",
-        "記入後は警告が出ないことを確認する"
+        "保管場所を空にした状態で /customers を開く",
+        "白紙ではなく次にすることの案内が出ていることを確認する",
+        "その文章を読んで、次に何をすればよいか分かるか説明してもらう"
       ],
-      "dependsOn": ["T022"],
-      "files": [".claude/hooks/handoff-check.sh"],
-      "automation": "ci",
-      "status": "done",
+      "dependsOn": ["T021"],
+      "files": ["src/app/customers.ts", "src/app/deals.ts", "src/app/layout.ts"],
+      "automation": "human",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T024",
-      "title": "AskUserQuestionの使用をAGENTS.mdに明記する",
-      "deliverable": "専門的な内容を聞くときは選択肢付きで聞く、という実践がAGENTS.mdに明文化されている状態",
-      "verify": ["AGENTS.mdの該当節を確認する"],
-      "dependsOn": [],
-      "files": ["AGENTS.md"],
+      "title": "まちがえて消しても取り戻せる",
+      "deliverable": "削除した顧客が「ごみ箱」に入り、元に戻せる状態",
+      "verify": [
+        "顧客を1件削除する",
+        "「ごみ箱」を開き、削除した顧客が入っていることを確認する",
+        "「元に戻す」を押すと一覧に戻ってくることを確認する"
+      ],
+      "dependsOn": ["T008"],
+      "files": [
+        "src/app/customers.ts",
+        "src/app/customers.test.ts",
+        "migrations/0005_soft_delete.sql"
+      ],
       "automation": "ci",
-      "status": "done",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T025",
-      "title": "質問スタイル検査の設計メモを書く",
-      "deliverable": "何をもって「非エンジニアに答えられない聞き方」と判定するかの設計メモがある状態",
-      "verify": ["設計メモを読み、具体的な判定基準が書かれていることを確認する"],
-      "dependsOn": [],
-      "files": ["docs/decisions.md"],
+      "title": "顧客を表計算用のファイルに書き出せる",
+      "deliverable": "「書き出し」を押すと、全顧客が1行ずつ入ったファイルが手元に落ちる状態",
+      "verify": [
+        "顧客を3件登録した状態で一覧の「書き出し」を押す",
+        "落ちてきたファイルを開く",
+        "登録した3件が1行ずつ全部入っていることを確認する"
+      ],
+      "dependsOn": ["T005"],
+      "files": ["src/app/csv.ts", "src/app/csv.test.ts", "src/app/customers.ts"],
       "automation": "ci",
-      "status": "done",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T026",
-      "title": "質問スタイルを検査するフックを実装する",
-      "deliverable": "設計どおりのフックが実際に動き、.claude/settings.jsonに登録されて自動発火する状態",
+      "title": "手元の顧客リストを取り込める",
+      "deliverable": "書き出したのと同じ形のファイルを選ぶと、中身が顧客として登録される状態",
       "verify": [
-        "専門用語だけの質問をさせてみて、フックが反応することを確認する",
-        "平易な説明＋選択肢の質問は通ることを確認する",
-        ".claude/settings.jsonのhooksにquestion-style-check.shが登録されていることを確認する"
+        "顧客3件分のファイルを用意して「取り込み」で選ぶ",
+        "顧客の一覧の画面を開く",
+        "ファイルの3件が顧客として並んでいることを確認する"
       ],
-      "dependsOn": ["T025", "T024"],
-      "files": [".claude/hooks/question-style-check.sh", ".claude/settings.json"],
-      "automation": "human",
-      "status": "done",
+      "dependsOn": ["T025"],
+      "files": ["src/app/csv.ts", "src/app/csv.test.ts", "src/app/customers.ts"],
+      "automation": "ci",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T027",
-      "title": "nextItemを呼ぶCLIコマンドを追加する",
-      "deliverable": "コマンドを実行すると、依存を満たしたtodo項目の中から次に着手すべき1件がわかる状態",
+      "title": "ネット上に置いて自分の端末から開けるようにする",
+      "deliverable": "自分のパソコンを起動していなくても、決まったアドレスで画面が開く状態",
       "verify": [
-        "依存関係を満たしたtodo項目が複数あるdocs/plan.jsonでコマンドを実行する",
-        "正しい1件が表示されることを確認する",
-        "依存先が未完了の項目が選ばれないことを確認する"
+        "pnpm run deploy を実行して表示されたアドレスを控える",
+        "パソコンを閉じた状態でスマホのブラウザからそのアドレスを開く",
+        "顧客の一覧が表示されることを確認する"
       ],
-      "dependsOn": [],
-      "files": ["src/plan-cli/next-item.ts", "package.json"],
-      "automation": "ci",
-      "status": "done",
+      "dependsOn": ["T021", "T026"],
+      "files": ["wrangler.toml", "package.json", "docs/deploy.md"],
+      "automation": "human",
+      "status": "todo",
       "origin": "initial"
     },
     {
       "id": "T028",
-      "title": "確かめ方の書き方が機械で弾かれることを/plan-initに明記する",
-      "deliverable": ".claude/skills/plan-init/SKILL.md に、確かめ方の書き方が機械で検査され、条件を満たさないと検証が落ちることと、その条件が書かれている状態",
+      "title": "自分以外は開けないようにする",
+      "deliverable": "公開したアドレスを他人が開いてもログインを求められ、中身が見えない状態",
       "verify": [
-        ".claude/skills/plan-init/SKILL.md を開き、確かめ方が機械で検査されると書かれていることを確認する",
-        "書かれている条件が、src/plan.ts の validateVerifySteps の実際の判定と一致していることを確認する"
+        "普段使っていないブラウザ、またはシークレットウィンドウで公開アドレスを開く",
+        "顧客の情報が見えずログインを求められることを確認する",
+        "自分のメールに届いた番号を入れると顧客の一覧が開くことを確認する"
       ],
-      "dependsOn": [],
-      "files": [".claude/skills/plan-init/SKILL.md"],
-      "automation": "ci",
-      "status": "done",
-      "origin": "added"
+      "dependsOn": ["T027"],
+      "files": ["docs/deploy.md", "wrangler.toml"],
+      "automation": "human",
+      "status": "todo",
+      "origin": "initial"
     },
     {
       "id": "T029",
-      "title": "引継ぎ本文に自動記録の目印を書かない注意を/handoffに入れる",
-      "deliverable": ".claude/skills/handoff/SKILL.md に、docs/handoff.md の本文へ自動記録の目印そのものを書いてはいけないことが書かれている状態",
+      "title": "消えたときに戻せることを試しておく",
+      "deliverable": "書き出したファイルから元どおりに戻せると、実際に試して分かっている状態",
       "verify": [
-        ".claude/skills/handoff/SKILL.md を開き、目印を本文に書かない注意があることを確認する",
-        "その注意が、書いた場合に何が起きるか（本文が切り落とされる）まで説明していることを確認する"
+        "公開した画面から書き出しをして手元にファイルを保存する",
+        "試し用の保管場所を空にしてから、そのファイルを取り込む",
+        "顧客が全員そろって戻っていることを確認する"
       ],
-      "dependsOn": [],
-      "files": [".claude/skills/handoff/SKILL.md"],
-      "automation": "ci",
-      "status": "done",
-      "origin": "added"
+      "dependsOn": ["T026", "T028"],
+      "files": ["docs/deploy.md", "src/app/csv.ts"],
+      "automation": "human",
+      "status": "todo",
+      "origin": "initial"
+    },
+    {
+      "id": "T030",
+      "title": "実際の顧客を入れて一周使ってみる",
+      "deliverable": "本物の顧客データが入り、日々の記録に実際に使える状態",
+      "verify": [
+        "実際の顧客を5件登録する",
+        "そのうち1件にやり取りと案件を入れて数日使ってみる",
+        "使ってみて足りないもの・使いにくいところを説明してもらう"
+      ],
+      "dependsOn": ["T028"],
+      "files": ["docs/handoff.md"],
+      "automation": "human",
+      "status": "todo",
+      "origin": "initial"
     }
   ]
 }
