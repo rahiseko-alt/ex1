@@ -133,7 +133,7 @@
       "dependsOn": ["T004"],
       "files": ["src/app/validate.ts", "src/app/validate.test.ts", "src/app/customers.ts"],
       "automation": "ci",
-      "status": "todo",
+      "status": "done",
       "origin": "initial"
     },
     {

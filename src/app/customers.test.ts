@@ -468,6 +468,77 @@ describe('顧客を消せる（確認つき）', () => {
   });
 });
 
+describe('入力のまちがいをその場で知らせる', () => {
+  it('名前を空のまま登録すると「名前を入力してください」が画面に出る', async () => {
+    const { env } = newEnv();
+    const res = await app.request('/customers', form({ name: '' }), env);
+
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain('名前を入力してください');
+  });
+
+  it('名前が空のときは保存されない', async () => {
+    const { env, sqlite } = newEnv();
+    await app.request('/customers', form({ name: '' }), env);
+
+    expect((sqlite.prepare('SELECT COUNT(*) AS n FROM customers').get() as { n: number }).n).toBe(
+      0,
+    );
+  });
+
+  it('メールに abc と入れると形が違うと知らせる', async () => {
+    const { env } = newEnv();
+    const res = await app.request('/customers', form({ name: '甲', email: 'abc' }), env);
+
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain('メールの形が違います');
+  });
+
+  it('打った内容は消えずに残る', async () => {
+    const { env } = newEnv();
+    const res = await app.request(
+      '/customers',
+      form({ name: '甲', company: '甲商店', email: 'abc' }),
+      env,
+    );
+
+    const html = await res.text();
+    expect(html).toContain('value="甲"');
+    expect(html).toContain('value="甲商店"');
+    expect(html).toContain('value="abc"');
+  });
+
+  it('ブラウザ自身の警告に先を越されないようにしてある', async () => {
+    const { env } = newEnv();
+    const html = await (await app.request('/customers/new', {}, env)).text();
+    expect(html).toContain('novalidate');
+  });
+
+  it('編集からも名前を空にはできない', async () => {
+    const { env } = newEnv();
+    await app.request('/customers', form({ name: '山田太郎' }), env);
+    const listHtml = await (await app.request('/customers', {}, env)).text();
+    const id = /href="\/customers\/(\d+)"/.exec(listHtml)?.[1];
+
+    const res = await app.request(`/customers/${id}`, form({ name: '' }), env);
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain('名前を入力してください');
+
+    const detail = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(detail).toContain('山田太郎');
+  });
+
+  it('まちがいが2つあれば2つとも画面に出る', async () => {
+    const { env } = newEnv();
+    const html = await (
+      await app.request('/customers', form({ name: '', email: 'abc' }), env)
+    ).text();
+
+    expect(html).toContain('名前を入力してください');
+    expect(html).toContain('メールの形が違います');
+  });
+});
+
 describe('escapeHtml', () => {
   it('記号を安全な書き方に直す', () => {
     expect(escapeHtml('<a href="x">&\'')).toBe('&lt;a href=&quot;x&quot;&gt;&amp;&#39;');
