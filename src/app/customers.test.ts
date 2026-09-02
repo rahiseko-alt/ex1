@@ -746,3 +746,119 @@ describe('顧客の画面に並ぶ案件', () => {
     );
   });
 });
+
+describe('まちがえて消しても取り戻せる', () => {
+  /** 顧客を1人つくって、その番号を返す。 */
+  async function withCustomer(env: Env, name: string): Promise<number> {
+    await app.request('/customers', form({ name }), env);
+    const html = await (await app.request('/customers', {}, env)).text();
+    const match = new RegExp(`/customers/(\\d+)">${name}`).exec(html);
+    if (match?.[1] === undefined) throw new Error(`顧客が登録できていない: ${name}`);
+    return Number(match[1]);
+  }
+
+  it('一覧にごみ箱への入口がある', async () => {
+    const { env } = newEnv();
+    await withCustomer(env, '山田太郎');
+    expect(await (await app.request('/customers', {}, env)).text()).toContain(
+      'href="/customers/trash"',
+    );
+  });
+
+  it('消した顧客がごみ箱に入る', async () => {
+    const { env } = newEnv();
+    const id = await withCustomer(env, '山田太郎');
+    await app.request(`/customers/${id}/delete`, { method: 'POST' }, env);
+
+    const html = await (await app.request('/customers/trash', {}, env)).text();
+    expect(html).toContain('山田太郎');
+    expect(html).toContain(`action="/customers/${id}/restore"`);
+  });
+
+  it('「元に戻す」を押すと一覧に戻ってくる', async () => {
+    const { env } = newEnv();
+    const id = await withCustomer(env, '山田太郎');
+    await app.request(`/customers/${id}/delete`, { method: 'POST' }, env);
+
+    const res = await app.request(`/customers/${id}/restore`, { method: 'POST' }, env);
+    expect(res.status).toBe(303);
+
+    const html = await (await app.request('/customers', {}, env)).text();
+    expect(html).toContain('山田太郎');
+    expect(html).toContain('1件');
+    // 戻したものはごみ箱から消える。
+    expect(await (await app.request('/customers/trash', {}, env)).text()).not.toContain('山田太郎');
+  });
+
+  it('戻すと、やり取りと案件も消す前のまま残っている', async () => {
+    const { env } = newEnv();
+    const id = await withCustomer(env, '山田太郎');
+    await app.request(
+      `/customers/${id}/history`,
+      form({ happened_on: '2026-09-01', body: '電話で打ち合わせ' }),
+      env,
+    );
+    await app.request(`/customers/${id}/deals`, form({ title: '事務所の改装' }), env);
+
+    await app.request(`/customers/${id}/delete`, { method: 'POST' }, env);
+    await app.request(`/customers/${id}/restore`, { method: 'POST' }, env);
+
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html).toContain('電話で打ち合わせ');
+    expect(html).toContain('事務所の改装');
+  });
+
+  it('ごみ箱の中の顧客は、一覧にも詳細にも出ない', async () => {
+    const { env } = newEnv();
+    const id = await withCustomer(env, '山田太郎');
+    await app.request(`/customers/${id}/delete`, { method: 'POST' }, env);
+
+    expect(await (await app.request('/customers', {}, env)).text()).not.toContain('山田太郎');
+    expect((await app.request(`/customers/${id}`, {}, env)).status).toBe(404);
+    // 名前で探しても出てこない。
+    expect(await (await app.request('/customers?q=山田', {}, env)).text()).not.toContain(
+      '山田太郎',
+    );
+  });
+
+  it('ごみ箱の中の顧客の案件は、案件の一覧に出ない', async () => {
+    const { env } = newEnv();
+    const id = await withCustomer(env, '山田太郎');
+    await app.request(`/customers/${id}/deals`, form({ title: '事務所の改装' }), env);
+
+    await app.request(`/customers/${id}/delete`, { method: 'POST' }, env);
+    expect(await (await app.request('/deals', {}, env)).text()).not.toContain('事務所の改装');
+
+    await app.request(`/customers/${id}/restore`, { method: 'POST' }, env);
+    expect(await (await app.request('/deals', {}, env)).text()).toContain('事務所の改装');
+  });
+
+  it('消していない顧客は戻せない（404）', async () => {
+    const { env } = newEnv();
+    const id = await withCustomer(env, '山田太郎');
+
+    expect((await app.request(`/customers/${id}/restore`, { method: 'POST' }, env)).status).toBe(
+      404,
+    );
+    expect((await app.request('/customers/999/restore', { method: 'POST' }, env)).status).toBe(404);
+  });
+
+  it('ごみ箱が空のときは、そう書く', async () => {
+    const { env } = newEnv();
+    expect(await (await app.request('/customers/trash', {}, env)).text()).toContain(
+      'ごみ箱は空です。',
+    );
+  });
+
+  it('消すのは押した1件だけで、ごみ箱にもその1件しか入らない', async () => {
+    const { env } = newEnv();
+    const id = await withCustomer(env, '山田太郎');
+    await withCustomer(env, '鈴木花子');
+
+    await app.request(`/customers/${id}/delete`, { method: 'POST' }, env);
+
+    const trash = await (await app.request('/customers/trash', {}, env)).text();
+    expect(trash).toContain('山田太郎');
+    expect(trash).not.toContain('鈴木花子');
+  });
+});

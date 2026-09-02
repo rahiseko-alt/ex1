@@ -213,3 +213,35 @@ describe('案件の置き場', () => {
     expect(() => db.prepare('INSERT INTO deals (customer_id) VALUES (1)').run()).toThrow();
   });
 });
+
+describe('ごみ箱', () => {
+  it('顧客に「消した日時」の欄がある', () => {
+    const db = applyMigrations();
+    const columns = (db.prepare('PRAGMA table_info(customers)').all() as { name: string }[]).map(
+      (row) => row.name,
+    );
+    expect(columns).toContain('deleted_at');
+  });
+
+  it('登録したばかりの顧客は空（＝使っている）', () => {
+    const db = applyMigrations();
+    db.prepare('INSERT INTO customers (name) VALUES (?)').run('山田太郎');
+    const row = db.prepare('SELECT deleted_at FROM customers').get() as { deleted_at: string };
+    expect(row.deleted_at).toBe('');
+  });
+
+  it('ごみ箱に入れても、やり取りと案件は消えない', () => {
+    const db = applyMigrations();
+    db.prepare('INSERT INTO customers (name) VALUES (?)').run('山田太郎');
+    db.prepare('INSERT INTO history (customer_id, happened_on, body) VALUES (1, ?, ?)').run(
+      '2026-01-05',
+      '電話',
+    );
+    db.prepare('INSERT INTO deals (customer_id, title) VALUES (1, ?)').run('事務所の改装');
+
+    db.prepare("UPDATE customers SET deleted_at = datetime('now') WHERE id = 1").run();
+
+    expect((db.prepare('SELECT COUNT(*) AS n FROM history').get() as { n: number }).n).toBe(1);
+    expect((db.prepare('SELECT COUNT(*) AS n FROM deals').get() as { n: number }).n).toBe(1);
+  });
+});

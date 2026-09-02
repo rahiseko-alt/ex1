@@ -9,6 +9,9 @@ import { Hono } from 'hono';
 import {
   deleteCustomer,
   findCustomer,
+  findDeletedCustomer,
+  listDeletedCustomers,
+  restoreCustomer,
   insertCustomer,
   listCustomers,
   updateCustomer,
@@ -200,7 +203,7 @@ customers.get('/customers', async (c) => {
 ${rows.map(renderRow).join('\n')}
       </tbody>
     </table>
-    <p><a href="/customers/new">顧客を登録する</a></p>`
+    <p><a href="/customers/new">顧客を登録する</a> ／ <a href="/customers/trash">ごみ箱</a></p>`
       : keyword.trim() === ''
         ? emptyNotice(
             'まだ1人も登録されていません。',
@@ -387,6 +390,62 @@ ${renderHistoryList(history)}
   );
 }
 
+/**
+ * ごみ箱の画面。消した顧客を並べ、1件ずつ元に戻せる。
+ *
+ * 「全部戻す」は置いていない。押し間違いを取り消すための場所なので、
+ * まとめて戻す操作もまた押し間違いになるため。
+ */
+function trashPage(rows: readonly CustomerRow[]): string {
+  const body =
+    rows.length === 0
+      ? emptyNotice(
+          'ごみ箱は空です。',
+          '顧客を削除すると、消える前にここへ入ります。まちがえて消してもここから元に戻せます。',
+          { href: '/customers', label: '顧客の一覧へ' },
+        )
+      : `    <p>${rows.length}件</p>
+    <table>
+      <thead>
+        <tr><th>名前</th><th>会社名</th><th>消した日時</th><th></th></tr>
+      </thead>
+      <tbody>
+${rows
+  .map(
+    (row) =>
+      `        <tr><td>${escapeHtml(row.name)}</td><td>${escapeHtml(row.company)}</td><td>${escapeHtml(row.deleted_at)}</td><td><form method="post" action="/customers/${row.id}/restore"><button type="submit">元に戻す</button></form></td></tr>`,
+  )
+  .join('\n')}
+      </tbody>
+    </table>
+    <p><a href="/customers">顧客の一覧へ</a></p>`;
+
+  return page(
+    'ごみ箱',
+    `    <h1>ごみ箱</h1>
+${body}`,
+  );
+}
+
+// `/customers/:id` より先に置く。後ろだと `trash` が id として読まれてしまう。
+customers.get('/customers/trash', async (c) =>
+  c.html(trashPage(await listDeletedCustomers(c.env.DB))),
+);
+
+customers.post('/customers/:id/restore', async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.notFound();
+
+  const row = await findDeletedCustomer(c.env.DB, id);
+  if (row === null) return c.html(notFoundPage(), 404);
+
+  await restoreCustomer(c.env.DB, id);
+
+  // 戻した相手の画面ではなく一覧へ送るのは、「一覧に戻ってきた」ことを
+  // その場で見せるため。
+  return c.redirect('/customers', 303);
+});
+
 customers.get('/customers/:id', async (c) => {
   const id = Number(c.req.param('id'));
   // 数字でない id は探しに行かない。/customers/new のような別の道と取り違えないため。
@@ -497,7 +556,7 @@ customers.get('/customers/:id/delete', async (c) => {
       `${row.name} を削除しますか`,
       `    <h1>本当に削除しますか</h1>
     <p>${escapeHtml(row.name)}${row.company === '' ? '' : `（${escapeHtml(row.company)}）`}を削除します。</p>
-    <p>やり取りの記録も一緒に消えます。元に戻せません。</p>
+    <p>やり取りの記録と案件も一緒に見えなくなります。まちがえたときは「ごみ箱」から元に戻せます。</p>
     <form method="post" action="/customers/${row.id}/delete">
       <p><button type="submit">はい、削除する</button></p>
     </form>
