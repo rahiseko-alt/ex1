@@ -223,7 +223,7 @@
       "dependsOn": ["T002"],
       "files": ["migrations/0003_deals.sql", "src/app/db.ts"],
       "automation": "ci",
-      "status": "todo",
+      "status": "done",
       "origin": "initial"
     },
     {
