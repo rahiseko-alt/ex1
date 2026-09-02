@@ -123,3 +123,45 @@ export async function updateDeal(
     .bind(input.title.trim(), input.stage, id, customerId)
     .run();
 }
+
+/** 案件と、その持ち主の名前。段階ごとの一覧では「誰の案件か」が分からないと使えないため。 */
+export interface DealWithCustomer extends DealRow {
+  customer_name: string;
+}
+
+/**
+ * 全員ぶんの案件を、持ち主の名前つきで返す。新しく作ったものが上。
+ *
+ * 顧客ごとの一覧（`listDealsOfCustomer`）と分けているのは、
+ * こちらは「いま動いている商談を全部見る」用で、持ち主の名前が要るため。
+ */
+export async function listAllDeals(db: D1Database): Promise<DealWithCustomer[]> {
+  const { results } = await db
+    .prepare(
+      `SELECT deals.*, customers.name AS customer_name
+         FROM deals
+         JOIN customers ON customers.id = deals.customer_id
+        ORDER BY deals.id DESC`,
+    )
+    .all<DealWithCustomer>();
+  return results;
+}
+
+/** 段階ごとの区切り1つぶん。 */
+export interface DealStageGroup {
+  stage: DealStage;
+  deals: DealWithCustomer[];
+}
+
+/**
+ * 段階ごとに分ける。並びは `DEAL_STAGES`（商談が進む順）。
+ *
+ * 1件も無い段階も残している。抜けていると「案件が無い」のか
+ * 「その段階が画面から消えている」のか、見た人に区別が付かないため。
+ */
+export function groupDealsByStage(rows: readonly DealWithCustomer[]): DealStageGroup[] {
+  return DEAL_STAGES.map((stage) => ({
+    stage,
+    deals: rows.filter((row) => row.stage === stage),
+  }));
+}

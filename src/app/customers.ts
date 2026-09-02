@@ -29,12 +29,15 @@ import {
 import {
   DEAL_STAGES,
   findDeal,
+  groupDealsByStage,
   insertDeal,
+  listAllDeals,
   listDealsOfCustomer,
   readDealInput,
   updateDeal,
   validateDeal,
   type DealInput,
+  type DealStageGroup,
 } from './deals.js';
 import { validateCustomer, type FieldError } from './validate.js';
 
@@ -364,6 +367,7 @@ ${details}
     <h2>案件</h2>
 ${renderDealForm(row.id, dealValues, dealErrors)}
 ${renderDealList(deals)}
+    <p><a href="/deals">案件を段階ごとに見る</a></p>
     <h2>やり取り</h2>
 ${renderHistoryForm(row.id, values, errors)}
 ${renderHistoryList(history)}
@@ -646,6 +650,47 @@ customers.post('/customers/:id/deals', async (c) => {
 
   // 保存後に詳細へ送り直すのは、再読み込みで同じ案件が二重に入らないようにするため。
   return c.redirect(`/customers/${id}`, 303);
+});
+
+/**
+ * 段階ごとに分けた案件の一覧。
+ *
+ * 顧客の画面（`renderDealList`）と作りを分けているのは、こちらは
+ * 「誰の案件か」を出す必要があり、区切りも顧客ではなく段階だから。
+ */
+function dealsPage(groups: readonly DealStageGroup[]): string {
+  const total = groups.reduce((sum, group) => sum + group.deals.length, 0);
+  const sections = groups
+    .map((group) => {
+      const heading = `    <h2>${escapeHtml(group.stage)}（${group.deals.length}件）</h2>`;
+      if (group.deals.length === 0) return `${heading}\n    <p>この段階の案件はありません。</p>`;
+      const items = group.deals
+        .map(
+          (deal) =>
+            `        <tr><td><a href="/customers/${deal.customer_id}/deals/${deal.id}">${escapeHtml(deal.title)}</a></td><td>${escapeHtml(deal.customer_name)}</td></tr>`,
+        )
+        .join('\n');
+      return `${heading}
+    <table>
+      <tbody>
+${items}
+      </tbody>
+    </table>`;
+    })
+    .join('\n');
+
+  return page(
+    '案件の一覧',
+    `    <h1>案件の一覧</h1>
+    <p>ぜんぶで ${total}件</p>
+${sections}
+    <p><a href="/customers">顧客の一覧へ</a></p>`,
+  );
+}
+
+customers.get('/deals', async (c) => {
+  const rows = await listAllDeals(c.env.DB);
+  return c.html(dealsPage(groupDealsByStage(rows)));
 });
 
 /**
