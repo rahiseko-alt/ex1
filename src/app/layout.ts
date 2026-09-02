@@ -60,3 +60,24 @@ ${body}
 </html>
 `;
 }
+
+/**
+ * まだ1件も無いときの案内。
+ *
+ * 白紙の画面だけを出すと、壊れているのか使い方が違うのかが分からない。
+ * 「いまどうなっているか」と「次に何をすればよいか」を必ず並べて出す。
+ */
+export function emptyNotice(
+  state: string,
+  nextStep: string,
+  link: { href: string; label: string } | null,
+): string {
+  const button =
+    link === null
+      ? ''
+      : `\n      <p><a class="next-step" href="${link.href}">${escapeHtml(link.label)}</a></p>`;
+  return `    <div class="empty">
+      <p><strong>${escapeHtml(state)}</strong></p>
+      <p>${escapeHtml(nextStep)}</p>${button}
+    </div>`;
+}

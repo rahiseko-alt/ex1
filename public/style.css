@@ -152,3 +152,90 @@ button {
   display: inline-block;
   font-size: 0.9rem;
 }
+
+/* まだ何も無いときの案内（T023）。表の代わりに出るので、余白と枠で「入れ物」に見せる。 */
+.empty {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: var(--bg-soft);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+
+.empty p {
+  margin: 0.35rem 0;
+}
+
+.next-step {
+  display: inline-block;
+  margin-top: 0.5rem;
+  padding: 0.6rem 1.25rem;
+  color: var(--bg);
+  background: var(--accent);
+  border-radius: 4px;
+  text-decoration: none;
+}
+
+/*
+ * 指で押すところの大きさ（T022）。44px は Apple の Human Interface Guidelines が
+ * 挙げている最小値で、これを下回ると押し間違いが増える。
+ */
+button,
+.next-step,
+input,
+select {
+  min-height: 44px;
+}
+
+/*
+ * スマホの幅（T022）。表は縦に伸ばすのではなく、その場で横に送れるようにする。
+ * 列を消すと、金額や日付が見えなくなるため。
+ */
+table {
+  display: block;
+  overflow-x: auto;
+  white-space: nowrap;
+}
+
+/*
+ * 表の中身は折り返さない。狭い画面で「見積提 出」のように語の途中で
+ * 切れると読めなくなるため。はみ出す分は表ごと横に送る。
+ * 長い文章（メモ・やり取りの内容）だけ .wrap を付けて折り返す。
+ */
+.wrap {
+  white-space: normal;
+  min-width: 12rem;
+}
+
+@media (max-width: 480px) {
+  body {
+    font-size: 15px;
+  }
+
+  .site-header .inner,
+  main {
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+
+  th,
+  td {
+    padding: 0.5rem 0.4rem;
+  }
+
+  /* 幅が狭いときは、見出しの列を狭めて中身の場所を空ける。 */
+  th {
+    width: 5.5rem;
+  }
+
+  /* 入力欄は幅いっぱいに。指で押す面積を確保するため。 */
+  input,
+  textarea,
+  select {
+    max-width: 100%;
+  }
+
+  button {
+    width: 100%;
+  }
+}
