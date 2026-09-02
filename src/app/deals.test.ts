@@ -6,7 +6,14 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import type { Env } from './db.js';
-import { DEAL_STAGES, isDealStage, MAX_TITLE_LENGTH, validateDeal } from './deals.js';
+import {
+  DEAL_STAGES,
+  groupDealsByStage,
+  isDealStage,
+  MAX_TITLE_LENGTH,
+  validateDeal,
+  type DealWithCustomer,
+} from './deals.js';
 import app from './server.js';
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -360,5 +367,145 @@ describe('案件の進み具合を変えられる', () => {
   it('居ない案件を開くと404になる', async () => {
     const { env, id } = newEnv();
     expect((await app.request(`/customers/${id}/deals/999`, {}, env)).status).toBe(404);
+  });
+});
+
+describe('段階ごとの案件一覧', () => {
+  /** 案件を1件つくり、段階をそこまで進めて、その番号を返す。 */
+  async function makeDeal(
+    env: Env,
+    customerId: number,
+    title: string,
+    stage: string,
+  ): Promise<number> {
+    await app.request(`/customers/${customerId}/deals`, form({ title }), env);
+    const html = await (await app.request(`/customers/${customerId}`, {}, env)).text();
+    const match = new RegExp(`/customers/${customerId}/deals/(\\d+)">${title}`).exec(html);
+    if (match?.[1] === undefined) throw new Error(`案件の画面への入口が無い: ${title}`);
+    const id = Number(match[1]);
+    await app.request(`/customers/${customerId}/deals/${id}`, form({ title, stage }), env);
+    return id;
+  }
+
+  /** 段階の見出しから次の見出しまで＝その段階の場所だけを取り出す。 */
+  function sectionOf(html: string, stage: string): string {
+    const part = html.split('<h2>').find((chunk) => chunk.startsWith(stage));
+    if (part === undefined) throw new Error(`段階の区切りが無い: ${stage}`);
+    return part;
+  }
+
+  it('/deals が開ける', async () => {
+    const { env } = newEnv();
+    const res = await app.request('/deals', {}, env);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('案件の一覧');
+  });
+
+  it('案件が1件も無くても、4つの段階すべてが場所として出る', async () => {
+    const { env } = newEnv();
+    const html = await (await app.request('/deals', {}, env)).text();
+    for (const stage of DEAL_STAGES) {
+      expect(html).toContain(`<h2>${stage}（0件）</h2>`);
+    }
+  });
+
+  it('段階の違う3件が、それぞれ自分の段階の場所に並ぶ', async () => {
+    const { env, id } = newEnv();
+    await makeDeal(env, id, '事務所の改装', '問合せ中');
+    await makeDeal(env, id, '看板の入替', '見積提出');
+    await makeDeal(env, id, '駐車場の舗装', '受注');
+
+    const html = await (await app.request('/deals', {}, env)).text();
+
+    expect(sectionOf(html, '問合せ中')).toContain('事務所の改装');
+    expect(sectionOf(html, '見積提出')).toContain('看板の入替');
+    expect(sectionOf(html, '受注')).toContain('駐車場の舗装');
+
+    // 他の段階の場所に混ざっていないことも見る。混ざっていても上の3つは通ってしまう。
+    expect(sectionOf(html, '問合せ中')).not.toContain('看板の入替');
+    expect(sectionOf(html, '見積提出')).not.toContain('駐車場の舗装');
+    expect(sectionOf(html, '失注')).toContain('この段階の案件はありません。');
+  });
+
+  it('段階を変えると、並ぶ場所も移る', async () => {
+    const { env, id } = newEnv();
+    const dealId = await makeDeal(env, id, '事務所の改装', '問合せ中');
+
+    await app.request(
+      `/customers/${id}/deals/${dealId}`,
+      form({ title: '事務所の改装', stage: '受注' }),
+      env,
+    );
+
+    const html = await (await app.request('/deals', {}, env)).text();
+    expect(sectionOf(html, '受注')).toContain('事務所の改装');
+    expect(sectionOf(html, '問合せ中')).not.toContain('事務所の改装');
+  });
+
+  it('誰の案件かが分かる', async () => {
+    const { env, sqlite, id } = newEnv();
+    sqlite.prepare('INSERT INTO customers (name) VALUES (?)').run('鈴木花子');
+    const other = (
+      sqlite.prepare('SELECT id FROM customers WHERE name = ?').get('鈴木花子') as { id: number }
+    ).id;
+    await makeDeal(env, id, '事務所の改装', '問合せ中');
+    await makeDeal(env, other, '看板の入替', '問合せ中');
+
+    const section = sectionOf(await (await app.request('/deals', {}, env)).text(), '問合せ中');
+    expect(section).toContain('山田太郎');
+    expect(section).toContain('鈴木花子');
+  });
+
+  it('一覧から案件の画面へ行ける', async () => {
+    const { env, id } = newEnv();
+    const dealId = await makeDeal(env, id, '事務所の改装', '見積提出');
+
+    const html = await (await app.request('/deals', {}, env)).text();
+    expect(html).toContain(`href="/customers/${id}/deals/${dealId}"`);
+  });
+
+  it('最初の画面と顧客の画面に、一覧への入口がある', async () => {
+    const { env, id } = newEnv();
+    expect(await (await app.request('/', {}, env)).text()).toContain('href="/deals"');
+    expect(await (await app.request(`/customers/${id}`, {}, env)).text()).toContain(
+      'href="/deals"',
+    );
+  });
+
+  it('件数が段階ごとに出る', async () => {
+    const { env, id } = newEnv();
+    await makeDeal(env, id, '事務所の改装', '受注');
+    await makeDeal(env, id, '看板の入替', '受注');
+
+    const html = await (await app.request('/deals', {}, env)).text();
+    expect(html).toContain('<h2>受注（2件）</h2>');
+    expect(html).toContain('ぜんぶで 2件');
+  });
+});
+
+describe('groupDealsByStage', () => {
+  it('1件も無い段階も残る。並びは商談が進む順', () => {
+    const groups = groupDealsByStage([]);
+    expect(groups.map((group) => group.stage)).toEqual([...DEAL_STAGES]);
+    expect(groups.every((group) => group.deals.length === 0)).toBe(true);
+  });
+
+  it('段階ごとに振り分ける', () => {
+    const deal = (id: number, stage: string): DealWithCustomer => ({
+      id,
+      customer_id: 1,
+      title: `案件${id}`,
+      stage,
+      created_at: '2026-09-01 00:00:00',
+      updated_at: '2026-09-01 00:00:00',
+      customer_name: '山田太郎',
+    });
+
+    const groups = groupDealsByStage([deal(1, '受注'), deal(2, '問合せ中'), deal(3, '受注')]);
+    const byStage = new Map(groups.map((group) => [group.stage, group.deals.map((d) => d.id)]));
+
+    expect(byStage.get('問合せ中')).toEqual([2]);
+    expect(byStage.get('受注')).toEqual([1, 3]);
+    expect(byStage.get('失注')).toEqual([]);
   });
 });
