@@ -1,0 +1,154 @@
+/*
+ * 画面全体の見た目。1枚だけにしてあるのは、ページごとに違う見た目になるのを
+ * 防ぐため（同じ部品は同じ書き方で出す）。
+ *
+ * 色や大きさは既定値から大きく離さない。凝った見た目より、
+ * 文字が読めて押せる場所が分かることを優先している。
+ */
+
+:root {
+  --text: #1a1a1a;
+  --muted: #5a5a5a;
+  --line: #d4d4d4;
+  --accent: #1c5d99;
+  --error: #b3261e;
+  --bg: #ffffff;
+  --bg-soft: #f6f6f4;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  background: var(--bg);
+  font-family:
+    system-ui,
+    -apple-system,
+    'Hiragino Kaku Gothic ProN',
+    'Noto Sans JP',
+    Meiryo,
+    sans-serif;
+  font-size: 16px;
+  line-height: 1.7;
+}
+
+/* 上のメニュー。どのページでも同じ位置・同じ並びで出す。 */
+.site-header {
+  border-bottom: 1px solid var(--line);
+  background: var(--bg-soft);
+}
+
+.site-header .inner {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 0.75rem 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 1rem;
+}
+
+.site-title {
+  font-weight: 700;
+  color: var(--text);
+  text-decoration: none;
+}
+
+.site-nav a {
+  margin-right: 1rem;
+  color: var(--accent);
+}
+
+main {
+  max-width: 44rem;
+  margin: 0 auto;
+  padding: 1rem 1rem 3rem;
+}
+
+h1 {
+  font-size: 1.5rem;
+  margin: 1.25rem 0 0.75rem;
+}
+
+h2 {
+  font-size: 1.15rem;
+  margin: 1.75rem 0 0.5rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--line);
+}
+
+p {
+  margin: 0.6rem 0;
+}
+
+a {
+  color: var(--accent);
+}
+
+/* 表。行の区切りだけを引く。枠で囲むと数が多いときに読みにくいため。 */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.5rem 0 1rem;
+}
+
+th,
+td {
+  text-align: left;
+  vertical-align: top;
+  padding: 0.5rem 0.6rem;
+  border-bottom: 1px solid var(--line);
+}
+
+th {
+  width: 8rem;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+/* 入力欄。指で押せる大きさを確保する。 */
+label {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+input,
+textarea,
+select {
+  width: 100%;
+  max-width: 24rem;
+  padding: 0.5rem;
+  font: inherit;
+  color: inherit;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+
+textarea {
+  max-width: 100%;
+}
+
+button {
+  padding: 0.5rem 1.25rem;
+  font: inherit;
+  color: var(--bg);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* まちがいの知らせ。色だけに頼らず、太字と位置でも分かるようにする。 */
+.error,
+.error-summary {
+  color: var(--error);
+}
+
+.error {
+  display: inline-block;
+  font-size: 0.9rem;
+}

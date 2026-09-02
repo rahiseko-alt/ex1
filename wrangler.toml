@@ -11,3 +11,9 @@ compatibility_date = "2026-09-01"
 binding = "DB"
 database_name = "crm"
 database_id = "local-only-placeholder"
+
+# 画面の見た目（public/style.css）。ここに置いたファイルは、Worker を通さずに
+# そのまま返される。CSS を TypeScript の中に埋めないのは、書き換えるたびに
+# 画面の組み立て側を触ることになるため。
+[assets]
+directory = "./public"

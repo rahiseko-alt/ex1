@@ -41,7 +41,11 @@ import {
   type DealInput,
   type DealStageGroup,
 } from './deals.js';
+import { escapeHtml, page } from './layout.js';
 import { validateCustomer, type FieldError } from './validate.js';
+
+// 既に多くの画面と検査がここから読んでいるため、入口はそのまま残す。
+export { escapeHtml };
 
 /** 入力欄1つぶんの定義。画面と、保存処理の両方がこの並びを見る。 */
 interface Field {
@@ -62,34 +66,6 @@ export const CUSTOMER_FIELDS: readonly Field[] = [
   { name: 'email', label: 'メール', type: 'email' },
   { name: 'note', label: 'メモ', multiline: true },
 ];
-
-/**
- * 画面に出す前に、記号を安全な書き方へ直す。
- * 顧客名に `<` が入っていても、画面の作りが壊れないようにするため。
- */
-export function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
-}
-
-function page(title: string, body: string): string {
-  return `<!doctype html>
-<html lang="ja">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${escapeHtml(title)}</title>
-  </head>
-  <body>
-${body}
-  </body>
-</html>
-`;
-}
 
 function renderField(field: Field, current = '', errors: readonly FieldError[] = []): string {
   const id = `f-${field.name}`;
