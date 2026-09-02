@@ -26,7 +26,16 @@ import {
   validateHistory,
   type HistoryInput,
 } from './history.js';
-import { insertDeal, listDealsOfCustomer, readDealInput, validateDeal } from './deals.js';
+import {
+  DEAL_STAGES,
+  findDeal,
+  insertDeal,
+  listDealsOfCustomer,
+  readDealInput,
+  updateDeal,
+  validateDeal,
+  type DealInput,
+} from './deals.js';
 import { validateCustomer, type FieldError } from './validate.js';
 
 /** 入力欄1つぶんの定義。画面と、保存処理の両方がこの並びを見る。 */
@@ -315,7 +324,12 @@ function renderDealForm(
 /** その顧客の案件を並べる。0件のときは表を出さず、そう書く。 */
 function renderDealList(rows: readonly DealRow[]): string {
   if (rows.length === 0) return '    <p>案件はまだありません。</p>';
-  const items = rows.map((row) => `        <tr><td>${escapeHtml(row.title)}</td></tr>`).join('\n');
+  const items = rows
+    .map(
+      (row) =>
+        `        <tr><td><a href="/customers/${row.customer_id}/deals/${row.id}">${escapeHtml(row.title)}</a></td></tr>`,
+    )
+    .join('\n');
   return `    <p>案件 ${rows.length}件</p>
     <table>
       <tbody>
@@ -632,4 +646,92 @@ customers.post('/customers/:id/deals', async (c) => {
 
   // 保存後に詳細へ送り直すのは、再読み込みで同じ案件が二重に入らないようにするため。
   return c.redirect(`/customers/${id}`, 303);
+});
+
+/**
+ * 案件1件の画面。案件名と進み具合を書き換えられる。
+ *
+ * 段階は自由入力ではなく選択にしている。打ち間違いが混ざると、
+ * 段階ごとの一覧（T018）で数が合わなくなるため。
+ */
+function dealPage(
+  customer: CustomerRow,
+  deal: DealRow,
+  values: Partial<DealInput> = {},
+  errors: readonly FieldError[] = [],
+): string {
+  const title = values.title ?? deal.title;
+  const stage = values.stage ?? deal.stage;
+  const options = DEAL_STAGES.map(
+    (name) =>
+      `          <option value="${escapeHtml(name)}"${name === stage ? ' selected' : ''}>${escapeHtml(name)}</option>`,
+  ).join('\n');
+  const summary =
+    errors.length === 0
+      ? ''
+      : `    <p class="error-summary"><strong>入力を確かめてください。</strong></p>\n`;
+
+  return page(
+    `${customer.name} の案件`,
+    `    <h1>${escapeHtml(deal.title)}</h1>
+    <p>${escapeHtml(customer.name)} の案件</p>
+    <p>いまの進み具合: <strong>${escapeHtml(deal.stage)}</strong></p>
+${summary}    <form method="post" action="/customers/${customer.id}/deals/${deal.id}" novalidate>
+      <p>
+        <label for="f-title">案件名</label><br />
+        <input id="f-title" name="title" type="text" value="${escapeHtml(title)}" required />${errorNote('title', errors)}
+      </p>
+      <p>
+        <label for="f-stage">進み具合</label><br />
+        <select id="f-stage" name="stage">
+${options}
+        </select>${errorNote('stage', errors)}
+      </p>
+      <p><button type="submit">保存</button></p>
+    </form>
+    <p><a href="/customers/${customer.id}">${escapeHtml(customer.name)} の画面へ戻る</a></p>`,
+  );
+}
+
+/** 案件を取り出して、その顧客のものであることまで確かめる。 */
+async function findDealOr404(
+  db: D1Database,
+  customerIdText: string | undefined,
+  dealIdText: string | undefined,
+): Promise<{ customer: CustomerRow; deal: DealRow } | null> {
+  const customerId = Number(customerIdText);
+  const dealId = Number(dealIdText);
+  if (!Number.isInteger(customerId) || customerId <= 0) return null;
+  if (!Number.isInteger(dealId) || dealId <= 0) return null;
+
+  const customer = await findCustomer(db, customerId);
+  if (customer === null) return null;
+
+  const deal = await findDeal(db, customerId, dealId);
+  if (deal === null) return null;
+
+  return { customer, deal };
+}
+
+customers.get('/customers/:id/deals/:dealId', async (c) => {
+  const found = await findDealOr404(c.env.DB, c.req.param('id'), c.req.param('dealId'));
+  if (found === null) return c.html(notFoundPage(), 404);
+
+  return c.html(dealPage(found.customer, found.deal));
+});
+
+customers.post('/customers/:id/deals/:dealId', async (c) => {
+  const found = await findDealOr404(c.env.DB, c.req.param('id'), c.req.param('dealId'));
+  if (found === null) return c.html(notFoundPage(), 404);
+
+  const input = readDealInput(await c.req.formData());
+  const errors = validateDeal(input);
+  if (errors.length > 0) {
+    return c.html(dealPage(found.customer, found.deal, input, errors), 400);
+  }
+
+  await updateDeal(c.env.DB, found.customer.id, found.deal.id, input);
+
+  // 書き換えたあとは同じ案件の画面へ戻す。何がどう変わったかをその場で見せるため。
+  return c.redirect(`/customers/${found.customer.id}/deals/${found.deal.id}`, 303);
 });
