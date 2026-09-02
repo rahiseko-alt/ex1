@@ -313,7 +313,7 @@
       "dependsOn": ["T005", "T018"],
       "files": ["src/app/layout.ts", "src/app/server.ts", "public/style.css"],
       "automation": "human",
-      "status": "todo",
+      "status": "done",
       "origin": "initial"
     },
     {
@@ -328,7 +328,7 @@
       "dependsOn": ["T021"],
       "files": ["public/style.css"],
       "automation": "human",
-      "status": "todo",
+      "status": "done",
       "origin": "initial"
     },
     {
@@ -343,7 +343,7 @@
       "dependsOn": ["T021"],
       "files": ["src/app/customers.ts", "src/app/deals.ts", "src/app/layout.ts"],
       "automation": "human",
-      "status": "todo",
+      "status": "done",
       "origin": "initial"
     },
     {

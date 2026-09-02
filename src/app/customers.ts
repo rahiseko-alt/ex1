@@ -41,7 +41,11 @@ import {
   type DealInput,
   type DealStageGroup,
 } from './deals.js';
+import { emptyNotice, escapeHtml, page } from './layout.js';
 import { validateCustomer, type FieldError } from './validate.js';
+
+// 既に多くの画面と検査がここから読んでいるため、入口はそのまま残す。
+export { escapeHtml };
 
 /** 入力欄1つぶんの定義。画面と、保存処理の両方がこの並びを見る。 */
 interface Field {
@@ -62,34 +66,6 @@ export const CUSTOMER_FIELDS: readonly Field[] = [
   { name: 'email', label: 'メール', type: 'email' },
   { name: 'note', label: 'メモ', multiline: true },
 ];
-
-/**
- * 画面に出す前に、記号を安全な書き方へ直す。
- * 顧客名に `<` が入っていても、画面の作りが壊れないようにするため。
- */
-export function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
-}
-
-function page(title: string, body: string): string {
-  return `<!doctype html>
-<html lang="ja">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>${escapeHtml(title)}</title>
-  </head>
-  <body>
-${body}
-  </body>
-</html>
-`;
-}
 
 function renderField(field: Field, current = '', errors: readonly FieldError[] = []): string {
   const id = `f-${field.name}`;
@@ -214,6 +190,29 @@ customers.get('/customers', async (c) => {
       ? `${rows.length}件`
       : `「${escapeHtml(keyword.trim())}」で探して ${rows.length}件`;
 
+  const body =
+    rows.length > 0
+      ? `    <table>
+      <thead>
+        <tr>${head}</tr>
+      </thead>
+      <tbody>
+${rows.map(renderRow).join('\n')}
+      </tbody>
+    </table>
+    <p><a href="/customers/new">顧客を登録する</a></p>`
+      : keyword.trim() === ''
+        ? emptyNotice(
+            'まだ1人も登録されていません。',
+            'この画面は、取引先や見込み客の連絡先をためておく場所です。まずは1人登録してみてください。名前だけでも登録できます。',
+            { href: '/customers/new', label: '顧客を登録する' },
+          )
+        : emptyNotice(
+            '探しましたが、見つかりませんでした。',
+            '名前の一部（「山田」だけ、など）でも探せます。まだ登録していない相手かもしれません。',
+            { href: '/customers/new', label: '顧客を登録する' },
+          );
+
   return c.html(
     page(
       '顧客の一覧',
@@ -227,15 +226,7 @@ customers.get('/customers', async (c) => {
       </p>
     </form>
     <p>${count}</p>
-    <table>
-      <thead>
-        <tr>${head}</tr>
-      </thead>
-      <tbody>
-${rows.map(renderRow).join('\n')}
-      </tbody>
-    </table>
-    <p><a href="/customers/new">顧客を登録する</a></p>`,
+${body}`,
     ),
   );
 });
@@ -291,12 +282,18 @@ function renderHistoryForm(
 
 /** 書かれたやり取りを並べる。0件のときは表を出さず、そう書く。 */
 function renderHistoryList(rows: readonly HistoryRow[]): string {
-  if (rows.length === 0) return '    <p>まだありません。</p>';
+  if (rows.length === 0) {
+    return emptyNotice(
+      'やり取りはまだありません。',
+      '電話やメールでの相手とのやり取りを、日付と内容で残せます。上の欄から1件目を書いてください。',
+      null,
+    );
+  }
   const items = rows
     .map(
       (row) =>
         // 改行を <br /> に置き換えるのは、複数行で書いたものが1行に潰れて読めなくなるため。
-        `        <tr><th>${escapeHtml(row.happened_on)}</th><td>${escapeHtml(row.body).replaceAll('\n', '<br />')}</td><td><a href="/customers/${row.customer_id}/history/${row.id}/edit">編集</a> ／ <a href="/customers/${row.customer_id}/history/${row.id}/delete">削除</a></td></tr>`,
+        `        <tr><th>${escapeHtml(row.happened_on)}</th><td class="wrap">${escapeHtml(row.body).replaceAll('\n', '<br />')}</td><td><a href="/customers/${row.customer_id}/history/${row.id}/edit">編集</a> ／ <a href="/customers/${row.customer_id}/history/${row.id}/delete">削除</a></td></tr>`,
     )
     .join('\n');
   return `    <p>${rows.length}件</p>
@@ -333,7 +330,13 @@ function renderDealForm(
  * 分からないと、1件ずつ開いて確かめることになるため。
  */
 function renderDealList(rows: readonly DealRow[]): string {
-  if (rows.length === 0) return '    <p>案件はまだありません。</p>';
+  if (rows.length === 0) {
+    return emptyNotice(
+      'この顧客の案件はまだありません。',
+      '案件は「いくらの仕事の話が、いまどこまで進んでいるか」を残す場所です。上の欄に案件名を入れて追加してください。',
+      null,
+    );
+  }
   const items = rows
     .map(
       (row) =>
@@ -359,7 +362,9 @@ function detailPage(
   dealErrors: readonly FieldError[] = [],
 ): string {
   const details = DETAIL_ROWS.map(
-    (detail) => `        <tr><th>${detail.label}</th><td>${escapeHtml(row[detail.key])}</td></tr>`,
+    (detail) =>
+      // メモだけは長文になるので折り返す。ほかの欄は折り返すと読みにくい。
+      `        <tr><th>${detail.label}</th><td${detail.key === 'note' ? ' class="wrap"' : ''}>${escapeHtml(row[detail.key])}</td></tr>`,
   ).join('\n');
 
   return page(
@@ -686,10 +691,20 @@ ${items}
     })
     .join('\n');
 
+  // 1件も無くても段階の見出しは残す（T018）。案内はその上に足すだけにする。
+  const lead =
+    total === 0
+      ? emptyNotice(
+          '案件はまだ1件もありません。',
+          '案件は顧客ごとに作ります。顧客の画面を開いて「案件を追加」から作ると、この画面に進み具合ごとに並びます。',
+          { href: '/customers', label: '顧客の一覧へ' },
+        )
+      : `    <p>ぜんぶで ${total}件</p>`;
+
   return page(
     '案件の一覧',
     `    <h1>案件の一覧</h1>
-    <p>ぜんぶで ${total}件</p>
+${lead}
 ${sections}
     <p><a href="/customers">顧客の一覧へ</a></p>`,
   );
