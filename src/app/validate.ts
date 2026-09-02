@@ -31,6 +31,20 @@ function looksLikeEmail(value: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
+/**
+ * `2026-03-20` の形で、かつ実在する日かどうか。
+ *
+ * 形だけ見て通すと `2026-02-31` のような日が入り、あとで並べ替えたときに
+ * 順番が狂う。Date に通して同じ文字列へ戻るかで確かめている。
+ *
+ * やり取りの日付（`history.ts`）と案件の見込み時期（`deals.ts`）の両方が使う。
+ */
+export function isRealDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(value);
+}
+
 /** 1つの欄に入れられる長さの上限。置き場を守るためというより、貼り付け事故を止めるため。 */
 const MAX_LENGTH = 1000;
 

@@ -6,7 +6,7 @@
  * （`history.ts` と同じ理由）。
  */
 import type { DealRow } from './db.js';
-import type { FieldError } from './validate.js';
+import { isRealDate, type FieldError } from './validate.js';
 
 /**
  * 進み具合の段階。**この並びが正本で、`migrations/0003_deals.sql` の CHECK と
@@ -27,6 +27,37 @@ export function isDealStage(value: string): value is DealStage {
 export interface DealInput {
   title: string;
   stage: string;
+  /** 打たれたままの金額。`500000` でも `500,000` でも受ける。空文字は「まだ分からない」。 */
+  amount: string;
+  /** 決まりそうな時期。`2026-03-20` の形。空文字は「まだ分からない」。 */
+  expected_on: string;
+}
+
+/** 金額の上限（1兆円）。桁を打ち間違えたまま保存されるのを止めるための線引き。 */
+export const MAX_AMOUNT = 1_000_000_000_000;
+
+/**
+ * 打たれた金額を数にする。読めなければ null。
+ *
+ * 桁区切りのコンマと全角の空白を落としてから見る。金額は他所から
+ * コピーして貼ることが多く、`500,000` を弾くと打ち直しになるため。
+ */
+export function parseAmount(value: string): number | null {
+  const cleaned = value.replaceAll(',', '').replaceAll('\u3000', '').trim();
+  if (cleaned === '') return 0;
+  if (!/^\d+$/.test(cleaned)) return null;
+  return Number(cleaned);
+}
+
+/** 画面に出す形（`500,000円`）。0 のときは「未定」。 */
+export function formatAmount(amount: number): string {
+  if (amount === 0) return '未定';
+  return `${amount.toLocaleString('ja-JP')}円`;
+}
+
+/** 画面に出す形。空のときは「未定」。 */
+export function formatExpectedOn(value: string): string {
+  return value === '' ? '未定' : value;
 }
 
 /** 案件名に入れられる長さの上限。 */
@@ -46,6 +77,21 @@ export function validateDeal(input: DealInput): FieldError[] {
     errors.push({ field: 'stage', message: '進み具合を選んでください' });
   }
 
+  const amount = parseAmount(input.amount);
+  if (amount === null) {
+    errors.push({ field: 'amount', message: '金額は数字で入力してください（例: 500000）' });
+  } else if (amount > MAX_AMOUNT) {
+    errors.push({ field: 'amount', message: '金額が大きすぎます。桁を確かめてください' });
+  }
+
+  const expected = input.expected_on.trim();
+  if (expected !== '' && !isRealDate(expected)) {
+    errors.push({
+      field: 'expected_on',
+      message: '時期の形が違います。例: 2026-03-20 のように入力してください',
+    });
+  }
+
   return errors;
 }
 
@@ -61,7 +107,12 @@ export function readDealInput(form: FormData): DealInput {
     return typeof value === 'string' ? value : '';
   };
   const stage = read('stage');
-  return { title: read('title').trim(), stage: stage === '' ? DEAL_STAGES[0] : stage };
+  return {
+    title: read('title').trim(),
+    stage: stage === '' ? DEAL_STAGES[0] : stage,
+    amount: read('amount').trim(),
+    expected_on: read('expected_on').trim(),
+  };
 }
 
 /** 案件を1件つくる。 */
@@ -71,8 +122,16 @@ export async function insertDeal(
   input: DealInput,
 ): Promise<void> {
   await db
-    .prepare('INSERT INTO deals (customer_id, title, stage) VALUES (?, ?, ?)')
-    .bind(customerId, input.title.trim(), input.stage)
+    .prepare(
+      'INSERT INTO deals (customer_id, title, stage, amount, expected_on) VALUES (?, ?, ?, ?, ?)',
+    )
+    .bind(
+      customerId,
+      input.title.trim(),
+      input.stage,
+      parseAmount(input.amount) ?? 0,
+      input.expected_on.trim(),
+    )
     .run();
 }
 
@@ -117,10 +176,17 @@ export async function updateDeal(
   await db
     .prepare(
       `UPDATE deals
-          SET title = ?, stage = ?, updated_at = datetime('now')
+          SET title = ?, stage = ?, amount = ?, expected_on = ?, updated_at = datetime('now')
         WHERE id = ? AND customer_id = ?`,
     )
-    .bind(input.title.trim(), input.stage, id, customerId)
+    .bind(
+      input.title.trim(),
+      input.stage,
+      parseAmount(input.amount) ?? 0,
+      input.expected_on.trim(),
+      id,
+      customerId,
+    )
     .run();
 }
 

@@ -44,6 +44,10 @@ export interface DealRow {
   customer_id: number;
   title: string;
   stage: string;
+  /** 円単位。0 は「まだ分からない」。小数を持たないのは日本円に小数の商談が無いため。 */
+  amount: number;
+  /** 決まりそうな時期。`2026-03-20` の形。空文字は「まだ分からない」。 */
+  expected_on: string;
   created_at: string;
   updated_at: string;
 }

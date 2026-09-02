@@ -29,6 +29,8 @@ import {
 import {
   DEAL_STAGES,
   findDeal,
+  formatAmount,
+  formatExpectedOn,
   groupDealsByStage,
   insertDeal,
   listAllDeals,
@@ -335,7 +337,7 @@ function renderDealList(rows: readonly DealRow[]): string {
   const items = rows
     .map(
       (row) =>
-        `        <tr><td><a href="/customers/${row.customer_id}/deals/${row.id}">${escapeHtml(row.title)}</a></td><td>${escapeHtml(row.stage)}</td></tr>`,
+        `        <tr><td><a href="/customers/${row.customer_id}/deals/${row.id}">${escapeHtml(row.title)}</a></td><td>${escapeHtml(row.stage)}</td><td>${escapeHtml(formatAmount(row.amount))}</td><td>${escapeHtml(formatExpectedOn(row.expected_on))}</td></tr>`,
     )
     .join('\n');
   return `    <p>案件 ${rows.length}件</p>
@@ -672,7 +674,7 @@ function dealsPage(groups: readonly DealStageGroup[]): string {
       const items = group.deals
         .map(
           (deal) =>
-            `        <tr><td><a href="/customers/${deal.customer_id}/deals/${deal.id}">${escapeHtml(deal.title)}</a></td><td>${escapeHtml(deal.customer_name)}</td></tr>`,
+            `        <tr><td><a href="/customers/${deal.customer_id}/deals/${deal.id}">${escapeHtml(deal.title)}</a></td><td>${escapeHtml(deal.customer_name)}</td><td>${escapeHtml(formatAmount(deal.amount))}</td><td>${escapeHtml(formatExpectedOn(deal.expected_on))}</td></tr>`,
         )
         .join('\n');
       return `${heading}
@@ -712,6 +714,9 @@ function dealPage(
 ): string {
   const title = values.title ?? deal.title;
   const stage = values.stage ?? deal.stage;
+  // 打ち直しになったときは、打った文字をそのまま返す（数に直した値ではなく）。
+  const amount = values.amount ?? (deal.amount === 0 ? '' : String(deal.amount));
+  const expectedOn = values.expected_on ?? deal.expected_on;
   const options = DEAL_STAGES.map(
     (name) =>
       `          <option value="${escapeHtml(name)}"${name === stage ? ' selected' : ''}>${escapeHtml(name)}</option>`,
@@ -726,6 +731,7 @@ function dealPage(
     `    <h1>${escapeHtml(deal.title)}</h1>
     <p>${escapeHtml(customer.name)} の案件</p>
     <p>いまの進み具合: <strong>${escapeHtml(deal.stage)}</strong></p>
+    <p>金額: <strong>${escapeHtml(formatAmount(deal.amount))}</strong> ／ 決まりそうな時期: <strong>${escapeHtml(formatExpectedOn(deal.expected_on))}</strong></p>
 ${summary}    <form method="post" action="/customers/${customer.id}/deals/${deal.id}" novalidate>
       <p>
         <label for="f-title">案件名</label><br />
@@ -736,6 +742,14 @@ ${summary}    <form method="post" action="/customers/${customer.id}/deals/${deal
         <select id="f-stage" name="stage">
 ${options}
         </select>${errorNote('stage', errors)}
+      </p>
+      <p>
+        <label for="f-amount">金額（円）</label><br />
+        <input id="f-amount" name="amount" type="text" inputmode="numeric" value="${escapeHtml(amount)}" />${errorNote('amount', errors)}
+      </p>
+      <p>
+        <label for="f-expected_on">いつごろ決まりそうか</label><br />
+        <input id="f-expected_on" name="expected_on" type="date" value="${escapeHtml(expectedOn)}" />${errorNote('expected_on', errors)}
       </p>
       <p><button type="submit">保存</button></p>
     </form>
