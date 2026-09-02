@@ -44,6 +44,7 @@ import {
   type DealInput,
   type DealStageGroup,
 } from './deals.js';
+import { csvFileName, toCsv } from './csv.js';
 import { emptyNotice, escapeHtml, page } from './layout.js';
 import { validateCustomer, type FieldError } from './validate.js';
 
@@ -203,7 +204,7 @@ customers.get('/customers', async (c) => {
 ${rows.map(renderRow).join('\n')}
       </tbody>
     </table>
-    <p><a href="/customers/new">顧客を登録する</a> ／ <a href="/customers/trash">ごみ箱</a></p>`
+    <p><a href="/customers/new">顧客を登録する</a> ／ <a href="/customers/export">書き出し</a> ／ <a href="/customers/trash">ごみ箱</a></p>`
       : keyword.trim() === ''
         ? emptyNotice(
             'まだ1人も登録されていません。',
@@ -389,6 +390,20 @@ ${renderHistoryList(history)}
     <p><a href="/customers">顧客の一覧へ戻る</a></p>`,
   );
 }
+
+// `/customers/:id` より先に置く。後ろだと `export` が id として読まれてしまう。
+customers.get('/customers/export', async (c) => {
+  const rows = await listCustomers(c.env.DB);
+
+  // ブラウザに「画面に出す」ではなく「保存する」と伝えるのが Content-Disposition。
+  // これが無いと、文字が画面いっぱいに並ぶだけでファイルが手元に落ちない。
+  return new Response(toCsv(rows), {
+    headers: {
+      'content-type': 'text/csv; charset=utf-8',
+      'content-disposition': `attachment; filename="${csvFileName(new Date())}"`,
+    },
+  });
+});
 
 /**
  * ごみ箱の画面。消した顧客を並べ、1件ずつ元に戻せる。

@@ -377,7 +377,7 @@
       "dependsOn": ["T005"],
       "files": ["src/app/csv.ts", "src/app/csv.test.ts", "src/app/customers.ts"],
       "automation": "ci",
-      "status": "todo",
+      "status": "done",
       "origin": "initial"
     },
     {
