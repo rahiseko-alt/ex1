@@ -44,7 +44,7 @@ import {
   type DealInput,
   type DealStageGroup,
 } from './deals.js';
-import { csvFileName, toCsv } from './csv.js';
+import { csvFileName, parseCustomersCsv, toCsv, type CsvProblem } from './csv.js';
 import { emptyNotice, escapeHtml, page } from './layout.js';
 import { validateCustomer, type FieldError } from './validate.js';
 
@@ -204,13 +204,15 @@ customers.get('/customers', async (c) => {
 ${rows.map(renderRow).join('\n')}
       </tbody>
     </table>
-    <p><a href="/customers/new">顧客を登録する</a> ／ <a href="/customers/export">書き出し</a> ／ <a href="/customers/trash">ごみ箱</a></p>`
+    <p><a href="/customers/new">顧客を登録する</a> ／ <a href="/customers/export">書き出し</a> ／ <a href="/customers/import">取り込み</a> ／ <a href="/customers/trash">ごみ箱</a></p>`
       : keyword.trim() === ''
-        ? emptyNotice(
+        ? // 1件も無いときこそ「取り込み」が要る（手元の一覧をまとめて入れたい場面）。
+          `${emptyNotice(
             'まだ1人も登録されていません。',
-            'この画面は、取引先や見込み客の連絡先をためておく場所です。まずは1人登録してみてください。名前だけでも登録できます。',
+            'この画面は、取引先や見込み客の連絡先をためておく場所です。まずは1人登録してみてください。名前だけでも登録できます。手元に一覧のファイルがあるなら「取り込み」でまとめて入れられます。',
             { href: '/customers/new', label: '顧客を登録する' },
-          )
+          )}
+    <p><a href="/customers/import">取り込み</a> ／ <a href="/customers/trash">ごみ箱</a></p>`
         : emptyNotice(
             '探しましたが、見つかりませんでした。',
             '名前の一部（「山田」だけ、など）でも探せます。まだ登録していない相手かもしれません。',
@@ -390,6 +392,85 @@ ${renderHistoryList(history)}
     <p><a href="/customers">顧客の一覧へ戻る</a></p>`,
   );
 }
+
+/**
+ * 取り込みの画面。書き出したのと同じ形のファイルを選んでもらう。
+ *
+ * 問題が1つでもあれば1件も入れない。半分だけ入った状態は、どこまで入ったかを
+ * 数えるところから始めることになり、やり直しがいちばん難しくなるため。
+ */
+function importPage(message = '', problems: readonly CsvProblem[] = []): string {
+  const note =
+    message === ''
+      ? ''
+      : `    <p class="error-summary"><strong>${escapeHtml(message)}</strong></p>\n`;
+  const list =
+    problems.length === 0
+      ? ''
+      : `    <table>
+      <thead>
+        <tr><th>行</th><th>どうなっているか</th></tr>
+      </thead>
+      <tbody>
+${problems
+  .map(
+    (problem) =>
+      `        <tr><th>${problem.line}行目</th><td>${escapeHtml(problem.message)}</td></tr>`,
+  )
+  .join('\n')}
+      </tbody>
+    </table>
+`;
+
+  return page(
+    '取り込み',
+    `    <h1>取り込み</h1>
+    <p>「書き出し」で作ったのと同じ形のファイル（1行目が見出し）を選んでください。</p>
+${note}${list}    <form method="post" action="/customers/import" enctype="multipart/form-data">
+      <p>
+        <label for="f-file">ファイル</label><br />
+        <input id="f-file" name="file" type="file" accept=".csv,text/csv" required />
+      </p>
+      <p><button type="submit">取り込む</button></p>
+    </form>
+    <p><a href="/customers">顧客の一覧へ戻る</a></p>`,
+  );
+}
+
+// `/customers/:id` より先に置く。後ろだと `import` が id として読まれてしまう。
+customers.get('/customers/import', (c) => c.html(importPage()));
+
+customers.post('/customers/import', async (c) => {
+  const form = await c.req.formData();
+  const file = form.get('file');
+  if (!(file instanceof File) || file.size === 0) {
+    return c.html(importPage('ファイルを選んでください。'), 400);
+  }
+
+  const { customers: rows, problems } = parseCustomersCsv(await file.text());
+
+  if (problems.length > 0) {
+    return c.html(
+      importPage(
+        `${problems.length}件の問題があったので、1件も取り込んでいません。直してからもう一度選んでください。`,
+        // 全部並べると画面が埋まるので、先頭20件だけ出す。直せば次の分が出る。
+        problems.slice(0, 20),
+      ),
+      400,
+    );
+  }
+
+  if (rows.length === 0) {
+    return c.html(importPage('ファイルに顧客が1件も入っていません。'), 400);
+  }
+
+  for (const row of rows) {
+    await insertCustomer(c.env.DB, row);
+  }
+
+  // 取り込んだ結果は一覧で見せる。何件入ったかより、実際に並んでいることが分かるほうが早い。
+  return c.redirect('/customers', 303);
+});
 
 // `/customers/:id` より先に置く。後ろだと `export` が id として読まれてしまう。
 customers.get('/customers/export', async (c) => {
