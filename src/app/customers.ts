@@ -16,7 +16,15 @@ import {
   type Env,
   type HistoryRow,
 } from './db.js';
-import { insertHistory, listHistory, validateHistory, type HistoryInput } from './history.js';
+import {
+  deleteHistory,
+  findHistory,
+  insertHistory,
+  listHistory,
+  updateHistory,
+  validateHistory,
+  type HistoryInput,
+} from './history.js';
 import { validateCustomer, type FieldError } from './validate.js';
 
 /** 入力欄1つぶんの定義。画面と、保存処理の両方がこの並びを見る。 */
@@ -272,7 +280,7 @@ function renderHistoryList(rows: readonly HistoryRow[]): string {
     .map(
       (row) =>
         // 改行を <br /> に置き換えるのは、複数行で書いたものが1行に潰れて読めなくなるため。
-        `        <tr><th>${escapeHtml(row.happened_on)}</th><td>${escapeHtml(row.body).replaceAll('\n', '<br />')}</td></tr>`,
+        `        <tr><th>${escapeHtml(row.happened_on)}</th><td>${escapeHtml(row.body).replaceAll('\n', '<br />')}</td><td><a href="/customers/${row.customer_id}/history/${row.id}/edit">編集</a> ／ <a href="/customers/${row.customer_id}/history/${row.id}/delete">削除</a></td></tr>`,
     )
     .join('\n');
   return `    <p>${rows.length}件</p>
@@ -428,4 +436,120 @@ customers.post('/customers/:id/delete', async (c) => {
   await deleteCustomer(c.env.DB, id);
 
   return c.redirect('/customers', 303);
+});
+
+/**
+ * やり取りの id を取り出して、その顧客のものであることまで確かめる。
+ *
+ * 顧客の id とやり取りの id を別々に見ると、他人のやり取りを
+ * アドレスの数字だけで開けてしまう。両方そろって初めて通す。
+ */
+async function findHistoryOr404(
+  db: D1Database,
+  customerIdText: string | undefined,
+  historyIdText: string | undefined,
+): Promise<{ customer: CustomerRow; entry: HistoryRow } | null> {
+  const customerId = Number(customerIdText);
+  const historyId = Number(historyIdText);
+  if (!Number.isInteger(customerId) || customerId <= 0) return null;
+  if (!Number.isInteger(historyId) || historyId <= 0) return null;
+
+  const customer = await findCustomer(db, customerId);
+  if (customer === null) return null;
+
+  const entry = await findHistory(db, customerId, historyId);
+  if (entry === null) return null;
+
+  return { customer, entry };
+}
+
+/** やり取りを1件書き換える入力欄。追加のときと同じ形にして、迷わないようにする。 */
+function historyEditPage(
+  customer: CustomerRow,
+  entry: HistoryRow,
+  values: Partial<HistoryInput>,
+  errors: readonly FieldError[] = [],
+): string {
+  const summary =
+    errors.length === 0
+      ? ''
+      : `    <p class="error-summary"><strong>入力を確かめてください。</strong></p>\n`;
+
+  return page(
+    `${customer.name} のやり取りを編集する`,
+    `    <h1>${escapeHtml(customer.name)} のやり取りを編集する</h1>
+${summary}    <form method="post" action="/customers/${customer.id}/history/${entry.id}" novalidate>
+      <p>
+        <label for="f-happened_on">日付</label><br />
+        <input id="f-happened_on" name="happened_on" type="date" value="${escapeHtml(values.happened_on ?? '')}" required />${errorNote('happened_on', errors)}
+      </p>
+      <p>
+        <label for="f-body">内容</label><br />
+        <textarea id="f-body" name="body" rows="4" required>${escapeHtml(values.body ?? '')}</textarea>${errorNote('body', errors)}
+      </p>
+      <p><button type="submit">保存</button></p>
+    </form>
+    <p><a href="/customers/${customer.id}">やめる</a></p>`,
+  );
+}
+
+customers.get('/customers/:id/history/:historyId/edit', async (c) => {
+  const found = await findHistoryOr404(c.env.DB, c.req.param('id'), c.req.param('historyId'));
+  if (found === null) return c.html(notFoundPage(), 404);
+
+  return c.html(
+    historyEditPage(found.customer, found.entry, {
+      happened_on: found.entry.happened_on,
+      body: found.entry.body,
+    }),
+  );
+});
+
+customers.post('/customers/:id/history/:historyId', async (c) => {
+  const found = await findHistoryOr404(c.env.DB, c.req.param('id'), c.req.param('historyId'));
+  if (found === null) return c.html(notFoundPage(), 404);
+
+  const form = await c.req.formData();
+  const input: HistoryInput = {
+    happened_on: typeof form.get('happened_on') === 'string' ? String(form.get('happened_on')) : '',
+    body: typeof form.get('body') === 'string' ? String(form.get('body')) : '',
+  };
+
+  const errors = validateHistory(input);
+  if (errors.length > 0) {
+    return c.html(historyEditPage(found.customer, found.entry, input, errors), 400);
+  }
+
+  await updateHistory(c.env.DB, found.customer.id, found.entry.id, input);
+
+  return c.redirect(`/customers/${found.customer.id}`, 303);
+});
+
+customers.get('/customers/:id/history/:historyId/delete', async (c) => {
+  const found = await findHistoryOr404(c.env.DB, c.req.param('id'), c.req.param('historyId'));
+  if (found === null) return c.html(notFoundPage(), 404);
+
+  // 顧客を消すときと同じく、ブラウザ標準の確認ダイアログではなく画面で聞き返す。
+  return c.html(
+    page(
+      'このやり取りを削除しますか',
+      `    <h1>本当に削除しますか</h1>
+    <p>${escapeHtml(found.customer.name)} の ${escapeHtml(found.entry.happened_on)} のやり取りを削除します。</p>
+    <blockquote>${escapeHtml(found.entry.body).replaceAll('\n', '<br />')}</blockquote>
+    <p>元に戻せません。</p>
+    <form method="post" action="/customers/${found.customer.id}/history/${found.entry.id}/delete">
+      <p><button type="submit">はい、削除する</button></p>
+    </form>
+    <p><a href="/customers/${found.customer.id}">やめる</a></p>`,
+    ),
+  );
+});
+
+customers.post('/customers/:id/history/:historyId/delete', async (c) => {
+  const found = await findHistoryOr404(c.env.DB, c.req.param('id'), c.req.param('historyId'));
+  if (found === null) return c.html(notFoundPage(), 404);
+
+  await deleteHistory(c.env.DB, found.customer.id, found.entry.id);
+
+  return c.redirect(`/customers/${found.customer.id}`, 303);
 });
