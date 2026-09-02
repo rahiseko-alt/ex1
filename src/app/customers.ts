@@ -324,13 +324,18 @@ function renderDealForm(
     </form>`;
 }
 
-/** その顧客の案件を並べる。0件のときは表を出さず、そう書く。 */
+/**
+ * その顧客の案件を並べる。0件のときは表を出さず、そう書く。
+ *
+ * 案件名の右に進み具合を出している。この画面で「いまどこまで進んだ話か」が
+ * 分からないと、1件ずつ開いて確かめることになるため。
+ */
 function renderDealList(rows: readonly DealRow[]): string {
   if (rows.length === 0) return '    <p>案件はまだありません。</p>';
   const items = rows
     .map(
       (row) =>
-        `        <tr><td><a href="/customers/${row.customer_id}/deals/${row.id}">${escapeHtml(row.title)}</a></td></tr>`,
+        `        <tr><td><a href="/customers/${row.customer_id}/deals/${row.id}">${escapeHtml(row.title)}</a></td><td>${escapeHtml(row.stage)}</td></tr>`,
     )
     .join('\n');
   return `    <p>案件 ${rows.length}件</p>

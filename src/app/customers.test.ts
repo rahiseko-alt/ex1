@@ -655,3 +655,94 @@ describe('escapeHtml', () => {
     expect(escapeHtml('<a href="x">&\'')).toBe('&lt;a href=&quot;x&quot;&gt;&amp;&#39;');
   });
 });
+
+describe('顧客の画面に並ぶ案件', () => {
+  /** 顧客を1人つくって、その番号を返す。 */
+  async function newCustomer(env: Env, name: string): Promise<number> {
+    await app.request('/customers', form({ name }), env);
+    const html = await (await app.request('/customers', {}, env)).text();
+    const match = new RegExp(`/customers/(\\d+)">${name}`).exec(html);
+    if (match?.[1] === undefined) throw new Error(`顧客の画面への入口が無い: ${name}`);
+    return Number(match[1]);
+  }
+
+  /** 案件を1件つくり、段階をそこまで進めて、その番号を返す。 */
+  async function newDeal(
+    env: Env,
+    customerId: number,
+    title: string,
+    stage: string,
+  ): Promise<number> {
+    await app.request(`/customers/${customerId}/deals`, form({ title }), env);
+    const html = await (await app.request(`/customers/${customerId}`, {}, env)).text();
+    const match = new RegExp(`/customers/${customerId}/deals/(\\d+)">${title}`).exec(html);
+    if (match?.[1] === undefined) throw new Error(`案件の画面への入口が無い: ${title}`);
+    const id = Number(match[1]);
+    await app.request(`/customers/${customerId}/deals/${id}`, form({ title, stage }), env);
+    return id;
+  }
+
+  /** その案件が並んでいる行だけを取り出す。 */
+  function rowOf(html: string, title: string): string {
+    const row = html.split('<tr>').find((chunk) => chunk.includes(`>${title}</a>`));
+    if (row === undefined) throw new Error(`案件が並んでいない: ${title}`);
+    return row;
+  }
+
+  it('その顧客の案件が段階つきで並ぶ', async () => {
+    const { env } = newEnv();
+    const id = await newCustomer(env, '山田太郎');
+    await newDeal(env, id, '事務所の改装', '見積提出');
+    await newDeal(env, id, '看板の入替', '受注');
+
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+
+    expect(html).toContain('案件 2件');
+    expect(rowOf(html, '事務所の改装')).toContain('見積提出');
+    expect(rowOf(html, '看板の入替')).toContain('受注');
+  });
+
+  it('段階を変えると、顧客の画面の表示も変わる', async () => {
+    const { env } = newEnv();
+    const id = await newCustomer(env, '山田太郎');
+    const dealId = await newDeal(env, id, '事務所の改装', '問合せ中');
+
+    expect(
+      rowOf(await (await app.request(`/customers/${id}`, {}, env)).text(), '事務所の改装'),
+    ).toContain('問合せ中');
+
+    await app.request(
+      `/customers/${id}/deals/${dealId}`,
+      form({ title: '事務所の改装', stage: '失注' }),
+      env,
+    );
+
+    const row = rowOf(
+      await (await app.request(`/customers/${id}`, {}, env)).text(),
+      '事務所の改装',
+    );
+    expect(row).toContain('失注');
+    expect(row).not.toContain('問合せ中');
+  });
+
+  it('他の顧客の案件は出ない', async () => {
+    const { env } = newEnv();
+    const yamada = await newCustomer(env, '山田太郎');
+    const suzuki = await newCustomer(env, '鈴木花子');
+    await newDeal(env, yamada, '事務所の改装', '受注');
+    await newDeal(env, suzuki, '看板の入替', '受注');
+
+    const html = await (await app.request(`/customers/${yamada}`, {}, env)).text();
+    expect(html).toContain('事務所の改装');
+    expect(html).not.toContain('看板の入替');
+    expect(html).toContain('案件 1件');
+  });
+
+  it('案件が無い顧客には、そう書く', async () => {
+    const { env } = newEnv();
+    const id = await newCustomer(env, '山田太郎');
+    expect(await (await app.request(`/customers/${id}`, {}, env)).text()).toContain(
+      '案件はまだありません。',
+    );
+  });
+});
