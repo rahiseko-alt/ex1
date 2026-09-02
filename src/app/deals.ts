@@ -89,3 +89,37 @@ export async function listDealsOfCustomer(db: D1Database, customerId: number): P
     .all<DealRow>();
   return results;
 }
+
+/**
+ * その顧客の案件を1件返す。見つからなければ null。
+ *
+ * `customer_id` も条件に入れているのは、アドレスの数字を書き換えただけで
+ * 別の顧客の案件を触れないようにするため（`history.ts` と同じ考え方）。
+ */
+export async function findDeal(
+  db: D1Database,
+  customerId: number,
+  id: number,
+): Promise<DealRow | null> {
+  return await db
+    .prepare('SELECT * FROM deals WHERE id = ? AND customer_id = ?')
+    .bind(id, customerId)
+    .first<DealRow>();
+}
+
+/** 案件を1件書き換える。`updated_at` も進める。 */
+export async function updateDeal(
+  db: D1Database,
+  customerId: number,
+  id: number,
+  input: DealInput,
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE deals
+          SET title = ?, stage = ?, updated_at = datetime('now')
+        WHERE id = ? AND customer_id = ?`,
+    )
+    .bind(input.title.trim(), input.stage, id, customerId)
+    .run();
+}

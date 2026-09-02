@@ -194,3 +194,171 @@ describe('顧客に案件をつくれる', () => {
     );
   });
 });
+
+describe('案件の進み具合を変えられる', () => {
+  /** 案件を1件つくって、その id を返す。 */
+  async function withOneDeal(
+    env: Env,
+    customerId: number,
+    title = '事務所の改装',
+  ): Promise<number> {
+    await app.request(`/customers/${customerId}/deals`, form({ title }), env);
+    const html = await (await app.request(`/customers/${customerId}`, {}, env)).text();
+    const match = new RegExp(`/customers/${customerId}/deals/(\\d+)`).exec(html);
+    if (match?.[1] === undefined) throw new Error('案件の画面への入口が無い');
+    return Number(match[1]);
+  }
+
+  it('顧客の画面から案件を開ける', async () => {
+    const { env, id } = newEnv();
+    const dealId = await withOneDeal(env, id);
+
+    const res = await app.request(`/customers/${id}/deals/${dealId}`, {}, env);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toContain('事務所の改装');
+  });
+
+  it('案件の画面に4つの段階が選択肢として並ぶ', async () => {
+    const { env, id } = newEnv();
+    const dealId = await withOneDeal(env, id);
+
+    const html = await (await app.request(`/customers/${id}/deals/${dealId}`, {}, env)).text();
+    for (const stage of DEAL_STAGES) {
+      expect(html).toContain(`<option value="${stage}"`);
+    }
+  });
+
+  it('いまの段階が選ばれた状態で出る', async () => {
+    const { env, id } = newEnv();
+    const dealId = await withOneDeal(env, id);
+
+    const html = await (await app.request(`/customers/${id}/deals/${dealId}`, {}, env)).text();
+    expect(html).toContain('<option value="問合せ中" selected>');
+    expect(html).not.toContain('<option value="見積提出" selected>');
+  });
+
+  it('「見積提出」に選び直すと画面の表示が変わる', async () => {
+    const { env, id } = newEnv();
+    const dealId = await withOneDeal(env, id);
+
+    const res = await app.request(
+      `/customers/${id}/deals/${dealId}`,
+      form({ title: '事務所の改装', stage: '見積提出' }),
+      env,
+    );
+    expect(res.status).toBe(303);
+
+    const html = await (await app.request(`/customers/${id}/deals/${dealId}`, {}, env)).text();
+    expect(html).toContain('いまの進み具合: <strong>見積提出</strong>');
+    expect(html).toContain('<option value="見積提出" selected>');
+  });
+
+  it.each([...DEAL_STAGES])('どの段階にも選び直せる: %s', async (stage) => {
+    const { env, sqlite, id } = newEnv();
+    const dealId = await withOneDeal(env, id);
+
+    await app.request(
+      `/customers/${id}/deals/${dealId}`,
+      form({ title: '事務所の改装', stage }),
+      env,
+    );
+
+    const row = sqlite.prepare('SELECT stage FROM deals WHERE id = ?').get(dealId) as {
+      stage: string;
+    };
+    expect(row.stage).toBe(stage);
+  });
+
+  it('段階を変えても案件名は消えない', async () => {
+    const { env, sqlite, id } = newEnv();
+    const dealId = await withOneDeal(env, id);
+
+    await app.request(
+      `/customers/${id}/deals/${dealId}`,
+      form({ title: '事務所の改装', stage: '受注' }),
+      env,
+    );
+
+    const row = sqlite.prepare('SELECT title FROM deals WHERE id = ?').get(dealId) as {
+      title: string;
+    };
+    expect(row.title).toBe('事務所の改装');
+  });
+
+  it('案件名も一緒に書き換えられる', async () => {
+    const { env, id } = newEnv();
+    const dealId = await withOneDeal(env, id);
+
+    await app.request(
+      `/customers/${id}/deals/${dealId}`,
+      form({ title: '事務所の全面改装', stage: '見積提出' }),
+      env,
+    );
+
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html).toContain('事務所の全面改装');
+  });
+
+  it('決めた段階以外を送っても保存されない', async () => {
+    const { env, sqlite, id } = newEnv();
+    const dealId = await withOneDeal(env, id);
+
+    const res = await app.request(
+      `/customers/${id}/deals/${dealId}`,
+      form({ title: '事務所の改装', stage: '検討中' }),
+      env,
+    );
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain('進み具合を選んでください');
+
+    const row = sqlite.prepare('SELECT stage FROM deals WHERE id = ?').get(dealId) as {
+      stage: string;
+    };
+    expect(row.stage).toBe('問合せ中');
+  });
+
+  it('書き換えても案件は増えない', async () => {
+    const { env, sqlite, id } = newEnv();
+    const dealId = await withOneDeal(env, id);
+
+    await app.request(
+      `/customers/${id}/deals/${dealId}`,
+      form({ title: '事務所の改装', stage: '受注' }),
+      env,
+    );
+
+    expect((sqlite.prepare('SELECT COUNT(*) AS n FROM deals').get() as { n: number }).n).toBe(1);
+  });
+
+  it('別の顧客の案件は、アドレスを書き換えても触れない', async () => {
+    const { env, sqlite, id } = newEnv();
+    sqlite.prepare('INSERT INTO customers (name) VALUES (?)').run('鈴木花子');
+    const other = (
+      sqlite.prepare('SELECT id FROM customers WHERE name = ?').get('鈴木花子') as { id: number }
+    ).id;
+    const dealId = await withOneDeal(env, id);
+
+    expect((await app.request(`/customers/${other}/deals/${dealId}`, {}, env)).status).toBe(404);
+    expect(
+      (
+        await app.request(
+          `/customers/${other}/deals/${dealId}`,
+          form({ title: '乗っ取り', stage: '受注' }),
+          env,
+        )
+      ).status,
+    ).toBe(404);
+
+    const row = sqlite.prepare('SELECT title, stage FROM deals WHERE id = ?').get(dealId) as {
+      title: string;
+      stage: string;
+    };
+    expect(row.title).toBe('事務所の改装');
+    expect(row.stage).toBe('問合せ中');
+  });
+
+  it('居ない案件を開くと404になる', async () => {
+    const { env, id } = newEnv();
+    expect((await app.request(`/customers/${id}/deals/999`, {}, env)).status).toBe(404);
+  });
+});
