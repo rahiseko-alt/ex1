@@ -19,6 +19,7 @@ function applyMigrations(): DatabaseSync {
   db.exec('PRAGMA foreign_keys = ON');
   db.exec(readFileSync(join(repoRoot, 'migrations', '0001_customers.sql'), 'utf8'));
   db.exec(readFileSync(join(repoRoot, 'migrations', '0002_history.sql'), 'utf8'));
+  db.exec(readFileSync(join(repoRoot, 'migrations', '0003_deals.sql'), 'utf8'));
   return db;
 }
 
@@ -127,5 +128,76 @@ describe('listTableNames', () => {
     } as unknown as D1Database;
 
     await expect(listTableNames(db)).resolves.toEqual(['customers', 'd1_migrations']);
+  });
+});
+
+describe('案件の置き場', () => {
+  it('deals の表ができる', () => {
+    const db = applyMigrations();
+    const rows = db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
+      .all() as { name: string }[];
+    expect(rows.map((row) => row.name)).toContain('deals');
+  });
+
+  it('案件名・顧客・進み具合の欄がある', () => {
+    const db = applyMigrations();
+    const columns = (db.prepare('PRAGMA table_info(deals)').all() as { name: string }[]).map(
+      (row) => row.name,
+    );
+    expect(columns).toEqual(expect.arrayContaining(['title', 'customer_id', 'stage']));
+  });
+
+  it('段階を書かなければ「問合せ中」から始まる', () => {
+    const db = applyMigrations();
+    db.prepare('INSERT INTO customers (name) VALUES (?)').run('山田太郎');
+    db.prepare('INSERT INTO deals (customer_id, title) VALUES (1, ?)').run('事務所の改装');
+
+    const row = db.prepare('SELECT stage FROM deals').get() as { stage: string };
+    expect(row.stage).toBe('問合せ中');
+  });
+
+  it('決めた4つ以外の段階は入れられない', () => {
+    const db = applyMigrations();
+    db.prepare('INSERT INTO customers (name) VALUES (?)').run('山田太郎');
+
+    expect(() =>
+      db
+        .prepare('INSERT INTO deals (customer_id, title, stage) VALUES (1, ?, ?)')
+        .run('案件', '検討中'),
+    ).toThrow();
+  });
+
+  it.each(['問合せ中', '見積提出', '受注', '失注'])('段階として入れられる: %s', (stage) => {
+    const db = applyMigrations();
+    db.prepare('INSERT INTO customers (name) VALUES (?)').run('山田太郎');
+    db.prepare('INSERT INTO deals (customer_id, title, stage) VALUES (1, ?, ?)').run('案件', stage);
+
+    const row = db.prepare('SELECT stage FROM deals').get() as { stage: string };
+    expect(row.stage).toBe(stage);
+  });
+
+  it('居ない顧客の案件は入れられない', () => {
+    const db = applyMigrations();
+    expect(() =>
+      db.prepare('INSERT INTO deals (customer_id, title) VALUES (999, ?)').run('宙に浮いた案件'),
+    ).toThrow();
+  });
+
+  it('顧客を消すとその人の案件も消える', () => {
+    const db = applyMigrations();
+    db.prepare('INSERT INTO customers (name) VALUES (?)').run('山田太郎');
+    db.prepare('INSERT INTO deals (customer_id, title) VALUES (1, ?)').run('事務所の改装');
+
+    db.prepare('DELETE FROM customers WHERE id = 1').run();
+
+    const left = db.prepare('SELECT COUNT(*) AS n FROM deals').get() as { n: number };
+    expect(left.n).toBe(0);
+  });
+
+  it('案件名は空にできない', () => {
+    const db = applyMigrations();
+    db.prepare('INSERT INTO customers (name) VALUES (?)').run('山田太郎');
+    expect(() => db.prepare('INSERT INTO deals (customer_id) VALUES (1)').run()).toThrow();
   });
 });
