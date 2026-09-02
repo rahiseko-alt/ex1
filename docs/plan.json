@@ -362,7 +362,7 @@
         "migrations/0005_soft_delete.sql"
       ],
       "automation": "ci",
-      "status": "todo",
+      "status": "done",
       "origin": "initial"
     },
     {
