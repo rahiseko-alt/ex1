@@ -283,7 +283,7 @@
       "dependsOn": ["T016"],
       "files": ["src/app/customers.ts", "src/app/customers.test.ts"],
       "automation": "ci",
-      "status": "todo",
+      "status": "done",
       "origin": "initial"
     },
     {
@@ -298,7 +298,7 @@
       "dependsOn": ["T016"],
       "files": ["src/app/deals.ts", "src/app/deals.test.ts", "migrations/0004_deal_amount.sql"],
       "automation": "ci",
-      "status": "todo",
+      "status": "done",
       "origin": "initial"
     },
     {

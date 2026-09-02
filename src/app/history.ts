@@ -5,7 +5,7 @@
  * 顧客の画面と互いに import し合う形になり、どちらが先に読まれるかで壊れるため。
  */
 import type { HistoryRow } from './db.js';
-import type { FieldError } from './validate.js';
+import { isRealDate, type FieldError } from './validate.js';
 
 /** 書き込む1件ぶん。`history` の列名と合わせてある。 */
 export interface HistoryInput {
@@ -16,18 +16,6 @@ export interface HistoryInput {
 
 /** 内容に入れられる長さの上限。顧客のメモより長めにしてあるのは、議事録を貼ることがあるため。 */
 export const MAX_BODY_LENGTH = 2000;
-
-/**
- * `2026-03-20` の形で、かつ実在する日かどうか。
- *
- * 形だけ見て通すと `2026-02-31` のような日が入り、あとで並べ替えたときに
- * 順番が狂う。Date に通して同じ文字列へ戻るかで確かめている。
- */
-function isRealDate(value: string): boolean {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const parsed = new Date(`${value}T00:00:00Z`);
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().startsWith(value);
-}
 
 /** まちがいを全部返す。空配列なら問題なし。顧客の入力検査と同じ考え方（`validate.ts` の冒頭）。 */
 export function validateHistory(input: HistoryInput): FieldError[] {

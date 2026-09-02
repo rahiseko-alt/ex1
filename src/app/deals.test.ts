@@ -8,9 +8,13 @@ import { describe, expect, it } from 'vitest';
 import type { Env } from './db.js';
 import {
   DEAL_STAGES,
+  formatAmount,
+  formatExpectedOn,
   groupDealsByStage,
   isDealStage,
+  MAX_AMOUNT,
   MAX_TITLE_LENGTH,
+  parseAmount,
   validateDeal,
   type DealWithCustomer,
 } from './deals.js';
@@ -71,27 +75,36 @@ describe('進み具合の段階', () => {
 
 describe('案件の入力検査', () => {
   it('案件名と段階がそろっていれば通る', () => {
-    expect(validateDeal({ title: '事務所の改装', stage: '問合せ中' })).toEqual([]);
+    expect(
+      validateDeal({ title: '事務所の改装', stage: '問合せ中', amount: '', expected_on: '' }),
+    ).toEqual([]);
   });
 
   it('案件名が空だと知らせる', () => {
-    const errors = validateDeal({ title: '', stage: '問合せ中' });
+    const errors = validateDeal({ title: '', stage: '問合せ中', amount: '', expected_on: '' });
     expect(errors).toEqual([{ field: 'title', message: '案件名を入力してください' }]);
   });
 
   it('案件名が空白だけでも空とみなす', () => {
-    expect(validateDeal({ title: '   ', stage: '問合せ中' }).map((e) => e.field)).toEqual([
-      'title',
-    ]);
+    expect(
+      validateDeal({ title: '   ', stage: '問合せ中', amount: '', expected_on: '' }).map(
+        (e) => e.field,
+      ),
+    ).toEqual(['title']);
   });
 
   it('案件名が長すぎると知らせる', () => {
-    const errors = validateDeal({ title: 'あ'.repeat(MAX_TITLE_LENGTH + 1), stage: '問合せ中' });
+    const errors = validateDeal({
+      title: 'あ'.repeat(MAX_TITLE_LENGTH + 1),
+      stage: '問合せ中',
+      amount: '',
+      expected_on: '',
+    });
     expect(errors.map((e) => e.field)).toEqual(['title']);
   });
 
   it('決めた段階以外は知らせる', () => {
-    const errors = validateDeal({ title: '案件', stage: '検討中' });
+    const errors = validateDeal({ title: '案件', stage: '検討中', amount: '', expected_on: '' });
     expect(errors).toEqual([{ field: 'stage', message: '進み具合を選んでください' }]);
   });
 });
@@ -496,6 +509,8 @@ describe('groupDealsByStage', () => {
       customer_id: 1,
       title: `案件${id}`,
       stage,
+      amount: 0,
+      expected_on: '',
       created_at: '2026-09-01 00:00:00',
       updated_at: '2026-09-01 00:00:00',
       customer_name: '山田太郎',
@@ -507,5 +522,147 @@ describe('groupDealsByStage', () => {
     expect(byStage.get('問合せ中')).toEqual([2]);
     expect(byStage.get('受注')).toEqual([1, 3]);
     expect(byStage.get('失注')).toEqual([]);
+  });
+});
+
+describe('金額と見込みの時期', () => {
+  const ok = { title: '事務所の改装', stage: '問合せ中' };
+
+  it('金額を数にする', () => {
+    expect(parseAmount('500000')).toBe(500000);
+    expect(parseAmount('500,000')).toBe(500000);
+    expect(parseAmount('  500000  ')).toBe(500000);
+  });
+
+  it('空欄は 0（まだ分からない）とみなす', () => {
+    expect(parseAmount('')).toBe(0);
+    expect(parseAmount('   ')).toBe(0);
+  });
+
+  it.each(['五十万', '50万', '-100', '1.5', '500 000'])('数として読めない: %s', (value) => {
+    expect(parseAmount(value)).toBeNull();
+  });
+
+  it('画面に出す形', () => {
+    expect(formatAmount(500000)).toBe('500,000円');
+    expect(formatAmount(0)).toBe('未定');
+    expect(formatExpectedOn('2026-03-20')).toBe('2026-03-20');
+    expect(formatExpectedOn('')).toBe('未定');
+  });
+
+  it('金額と時期は空でも通る', () => {
+    expect(validateDeal({ ...ok, amount: '', expected_on: '' })).toEqual([]);
+  });
+
+  it('数でない金額は知らせる', () => {
+    const errors = validateDeal({ ...ok, amount: '五十万', expected_on: '' });
+    expect(errors.map((e) => e.field)).toEqual(['amount']);
+  });
+
+  it('桁が大きすぎる金額は知らせる', () => {
+    const errors = validateDeal({ ...ok, amount: String(MAX_AMOUNT + 1), expected_on: '' });
+    expect(errors.map((e) => e.field)).toEqual(['amount']);
+  });
+
+  it('実在しない日付の時期は知らせる', () => {
+    const errors = validateDeal({ ...ok, amount: '', expected_on: '2026-02-31' });
+    expect(errors.map((e) => e.field)).toEqual(['expected_on']);
+  });
+
+  /** 案件を1件つくって、その番号を返す。 */
+  async function withDeal(env: Env, customerId: number): Promise<number> {
+    await app.request(`/customers/${customerId}/deals`, form({ title: '事務所の改装' }), env);
+    const html = await (await app.request(`/customers/${customerId}`, {}, env)).text();
+    const match = new RegExp(`/customers/${customerId}/deals/(\\d+)`).exec(html);
+    if (match?.[1] === undefined) throw new Error('案件の画面への入口が無い');
+    return Number(match[1]);
+  }
+
+  it('案件の画面に金額と時期の欄がある', async () => {
+    const { env, id } = newEnv();
+    const dealId = await withDeal(env, id);
+
+    const html = await (await app.request(`/customers/${id}/deals/${dealId}`, {}, env)).text();
+    expect(html).toContain('id="f-amount"');
+    expect(html).toContain('id="f-expected_on"');
+  });
+
+  it('入れた金額と時期が保存され、開き直しても残る', async () => {
+    const { env, sqlite, id } = newEnv();
+    const dealId = await withDeal(env, id);
+
+    await app.request(
+      `/customers/${id}/deals/${dealId}`,
+      form({
+        title: '事務所の改装',
+        stage: '見積提出',
+        amount: '500000',
+        expected_on: '2026-03-20',
+      }),
+      env,
+    );
+
+    const row = sqlite
+      .prepare('SELECT amount, expected_on FROM deals WHERE id = ?')
+      .get(dealId) as {
+      amount: number;
+      expected_on: string;
+    };
+    expect(row.amount).toBe(500000);
+    expect(row.expected_on).toBe('2026-03-20');
+
+    const html = await (await app.request(`/customers/${id}/deals/${dealId}`, {}, env)).text();
+    expect(html).toContain('500,000円');
+    expect(html).toContain('2026-03-20');
+  });
+
+  it('案件の一覧に金額と時期が出る', async () => {
+    const { env, id } = newEnv();
+    const dealId = await withDeal(env, id);
+    await app.request(
+      `/customers/${id}/deals/${dealId}`,
+      form({
+        title: '事務所の改装',
+        stage: '見積提出',
+        amount: '500000',
+        expected_on: '2026-03-20',
+      }),
+      env,
+    );
+
+    const html = await (await app.request('/deals', {}, env)).text();
+    const row = html.split('<tr>').find((chunk) => chunk.includes('事務所の改装'));
+    expect(row).toContain('500,000円');
+    expect(row).toContain('2026-03-20');
+  });
+
+  it('金額を入れていない案件は「未定」と出る', async () => {
+    const { env, id } = newEnv();
+    await withDeal(env, id);
+
+    const html = await (await app.request('/deals', {}, env)).text();
+    const row = html.split('<tr>').find((chunk) => chunk.includes('事務所の改装'));
+    expect(row).toContain('未定');
+  });
+
+  it('金額がおかしいときは保存せず、打った内容を返す', async () => {
+    const { env, sqlite, id } = newEnv();
+    const dealId = await withDeal(env, id);
+
+    const res = await app.request(
+      `/customers/${id}/deals/${dealId}`,
+      form({ title: '事務所の改装', stage: '問合せ中', amount: '五十万', expected_on: '' }),
+      env,
+    );
+
+    expect(res.status).toBe(400);
+    const html = await res.text();
+    expect(html).toContain('金額は数字で入力してください（例: 500000）');
+    expect(html).toContain('value="五十万"');
+
+    const row = sqlite.prepare('SELECT amount FROM deals WHERE id = ?').get(dealId) as {
+      amount: number;
+    };
+    expect(row.amount).toBe(0);
   });
 });
