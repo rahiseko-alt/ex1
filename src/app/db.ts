@@ -15,6 +15,8 @@ export interface Env {
 export interface CustomerRow {
   id: number;
   name: string;
+  /** ふりがな。ひらがなで持つ（カタカナで入れられたものは直して入れる）。空でもよい。 */
+  kana: string;
   company: string;
   phone: string;
   email: string;
@@ -62,28 +64,51 @@ export async function listTableNames(db: D1Database): Promise<string[]> {
   return results.map((row) => row.name);
 }
 
+/**
+ * カタカナをひらがなに直す。
+ *
+ * 「サトウ」と「さとう」が別の場所に並ぶと、探している人を目で追えなくなる。
+ * 入れるときに片方へ寄せておけば、並べ替えの側で気にしなくてよい。
+ */
+export function toHiragana(value: string): string {
+  return value
+    .trim()
+    .replace(/[\u30a1-\u30f6]/g, (ch) => String.fromCharCode(ch.charCodeAt(0) - 0x60));
+}
+
+/**
+ * 一覧の並び順。ふりがなを入れた人が五十音順で先に並び、
+ * 入れていない人はその後ろに名前順（文字コード順）で並ぶ。
+ *
+ * ふりがなの無い人を混ぜて並べると、漢字は文字コード順のままなので
+ * 「あいうえお順の途中に脈絡のない人が挟まる」状態になる。分けたほうが探しやすい。
+ */
+const ORDER_BY_KANA = `ORDER BY CASE WHEN kana = '' THEN 1 ELSE 0 END, kana, name`;
+
 /** 顧客を1件書き込む。空欄は空文字で埋める（表の既定値と揃える）。 */
 export async function insertCustomer(
   db: D1Database,
-  input: Pick<CustomerRow, 'name' | 'company' | 'phone' | 'email' | 'note'>,
+  input: Pick<CustomerRow, 'name' | 'kana' | 'company' | 'phone' | 'email' | 'note'>,
 ): Promise<void> {
   await db
-    .prepare('INSERT INTO customers (name, company, phone, email, note) VALUES (?, ?, ?, ?, ?)')
-    .bind(input.name, input.company, input.phone, input.email, input.note)
+    .prepare(
+      'INSERT INTO customers (name, kana, company, phone, email, note) VALUES (?, ?, ?, ?, ?, ?)',
+    )
+    .bind(input.name, toHiragana(input.kana), input.company, input.phone, input.email, input.note)
     .run();
 }
 
 /**
- * 顧客を名前順で返す。`keyword` があれば、名前か会社名にそれを含むものだけ。
+ * 顧客を五十音順で返す。`keyword` があれば、名前・会社名・ふりがなに
+ * それを含むものだけ。
  *
- * `LIKE` の前後を `%` で挟むだけの単純な探し方にしている。件数が少ないうちは十分で、
- * ふりがなや読み替えを入れるのは別の項目（T031）の仕事。
+ * `LIKE` の前後を `%` で挟むだけの単純な探し方にしている。件数が少ないうちは十分。
  */
 export async function listCustomers(db: D1Database, keyword = ''): Promise<CustomerRow[]> {
   const trimmed = keyword.trim();
   if (trimmed === '') {
     const { results } = await db
-      .prepare("SELECT * FROM customers WHERE deleted_at = '' ORDER BY name")
+      .prepare(`SELECT * FROM customers WHERE deleted_at = '' ${ORDER_BY_KANA}`)
       .all<CustomerRow>();
     return results;
   }
@@ -95,10 +120,10 @@ export async function listCustomers(db: D1Database, keyword = ''): Promise<Custo
     .prepare(
       `SELECT * FROM customers
         WHERE deleted_at = ''
-          AND (name LIKE ? ESCAPE '!' OR company LIKE ? ESCAPE '!')
-        ORDER BY name`,
+          AND (name LIKE ? ESCAPE '!' OR company LIKE ? ESCAPE '!' OR kana LIKE ? ESCAPE '!')
+        ${ORDER_BY_KANA}`,
     )
-    .bind(pattern, pattern)
+    .bind(pattern, pattern, pattern)
     .all<CustomerRow>();
   return results;
 }
@@ -133,15 +158,24 @@ export async function listDeletedCustomers(db: D1Database): Promise<CustomerRow[
 export async function updateCustomer(
   db: D1Database,
   id: number,
-  input: Pick<CustomerRow, 'name' | 'company' | 'phone' | 'email' | 'note'>,
+  input: Pick<CustomerRow, 'name' | 'kana' | 'company' | 'phone' | 'email' | 'note'>,
 ): Promise<void> {
   await db
     .prepare(
       `UPDATE customers
-          SET name = ?, company = ?, phone = ?, email = ?, note = ?, updated_at = datetime('now')
+          SET name = ?, kana = ?, company = ?, phone = ?, email = ?, note = ?,
+              updated_at = datetime('now')
         WHERE id = ?`,
     )
-    .bind(input.name, input.company, input.phone, input.email, input.note, id)
+    .bind(
+      input.name,
+      toHiragana(input.kana),
+      input.company,
+      input.phone,
+      input.email,
+      input.note,
+      id,
+    )
     .run();
 }
 

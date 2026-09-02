@@ -65,6 +65,7 @@ interface Field {
 
 export const CUSTOMER_FIELDS: readonly Field[] = [
   { name: 'name', label: '名前', type: 'text', required: true },
+  { name: 'kana', label: 'ふりがな', type: 'text' },
   { name: 'company', label: '会社名', type: 'text' },
   { name: 'phone', label: '電話', type: 'tel' },
   { name: 'email', label: 'メール', type: 'email' },
@@ -117,13 +118,14 @@ ${fields}
 /** 送られてきた入力から、表に入れる5つの値を取り出す。登録も書き換えも同じ読み方をする。 */
 async function readCustomerInput(
   form: FormData,
-): Promise<Pick<CustomerRow, 'name' | 'company' | 'phone' | 'email' | 'note'>> {
+): Promise<Pick<CustomerRow, 'name' | 'kana' | 'company' | 'phone' | 'email' | 'note'>> {
   const read = (name: string): string => {
     const value = form.get(name);
     return typeof value === 'string' ? value.trim() : '';
   };
   return {
     name: read('name'),
+    kana: read('kana'),
     company: read('company'),
     phone: read('phone'),
     email: read('email'),

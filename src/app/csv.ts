@@ -9,6 +9,7 @@ import type { CustomerRow } from './db.js';
 /** 書き出す列。**この並びが正本**で、1行目の見出しにもこの言葉をそのまま使う。 */
 export const CSV_COLUMNS = [
   { key: 'name', label: '名前' },
+  { key: 'kana', label: 'ふりがな' },
   { key: 'company', label: '会社名' },
   { key: 'phone', label: '電話' },
   { key: 'email', label: 'メール' },
@@ -170,6 +171,7 @@ export function parseCustomersCsv(text: string): CsvParseResult {
 
     customers.push({
       name,
+      kana: read('kana'),
       company: read('company'),
       phone: read('phone'),
       email: read('email'),
