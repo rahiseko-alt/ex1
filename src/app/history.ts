@@ -75,3 +75,45 @@ export async function listHistory(db: D1Database, customerId: number): Promise<H
     .all<HistoryRow>();
   return results;
 }
+
+/**
+ * その顧客のやり取りを1件返す。見つからなければ null。
+ *
+ * `customer_id` も条件に入れているのは、アドレスの数字を書き換えただけで
+ * 別の顧客のやり取りを触れないようにするため。
+ */
+export async function findHistory(
+  db: D1Database,
+  customerId: number,
+  id: number,
+): Promise<HistoryRow | null> {
+  return await db
+    .prepare('SELECT * FROM history WHERE id = ? AND customer_id = ?')
+    .bind(id, customerId)
+    .first<HistoryRow>();
+}
+
+/** やり取りを1件書き換える。`updated_at` も進める。 */
+export async function updateHistory(
+  db: D1Database,
+  customerId: number,
+  id: number,
+  input: HistoryInput,
+): Promise<void> {
+  await db
+    .prepare(
+      `UPDATE history
+          SET happened_on = ?, body = ?, updated_at = datetime('now')
+        WHERE id = ? AND customer_id = ?`,
+    )
+    .bind(input.happened_on.trim(), input.body, id, customerId)
+    .run();
+}
+
+/** やり取りを1件消す。 */
+export async function deleteHistory(db: D1Database, customerId: number, id: number): Promise<void> {
+  await db
+    .prepare('DELETE FROM history WHERE id = ? AND customer_id = ?')
+    .bind(id, customerId)
+    .run();
+}

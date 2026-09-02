@@ -300,3 +300,191 @@ describe('やり取りが新しい順に並ぶ', () => {
     expect(html).not.toContain('鈴木の分');
   });
 });
+
+describe('やり取りを直せる・消せる', () => {
+  /** 1件書いて、その id を返す。 */
+  async function withOneEntry(
+    env: Env,
+    customerId: number,
+    happened_on = '2026-03-10',
+    body = 'はじめの内容',
+  ): Promise<number> {
+    await app.request(`/customers/${customerId}/history`, form({ happened_on, body }), env);
+    const html = await (await app.request(`/customers/${customerId}`, {}, env)).text();
+    const match = new RegExp(`/customers/${customerId}/history/(\\d+)/edit`).exec(html);
+    if (match?.[1] === undefined) throw new Error('やり取りに編集への入口が無い');
+    return Number(match[1]);
+  }
+
+  it('やり取りの行に「編集」と「削除」の入口がある', async () => {
+    const { env, id } = newEnv();
+    const entryId = await withOneEntry(env, id);
+
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html).toContain(`/customers/${id}/history/${entryId}/edit`);
+    expect(html).toContain(`/customers/${id}/history/${entryId}/delete`);
+  });
+
+  it('編集の画面に今の値が入っている', async () => {
+    const { env, id } = newEnv();
+    const entryId = await withOneEntry(env, id, '2026-03-10', 'はじめの内容');
+
+    const html = await (
+      await app.request(`/customers/${id}/history/${entryId}/edit`, {}, env)
+    ).text();
+    expect(html).toContain('value="2026-03-10"');
+    expect(html).toContain('はじめの内容');
+  });
+
+  it('内容を書き換えると詳細画面に新しい内容が出る', async () => {
+    const { env, id } = newEnv();
+    const entryId = await withOneEntry(env, id);
+
+    const res = await app.request(
+      `/customers/${id}/history/${entryId}`,
+      form({ happened_on: '2026-03-10', body: '書き換えた内容' }),
+      env,
+    );
+    expect(res.status).toBe(303);
+
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html).toContain('書き換えた内容');
+    expect(html).not.toContain('はじめの内容');
+    expect(html).toContain('1件');
+  });
+
+  it('日付も書き換えられ、並び順にも効く', async () => {
+    const { env, id } = newEnv();
+    const oldEntry = await withOneEntry(env, id, '2026-01-05', '古い日で書いた');
+    await app.request(
+      `/customers/${id}/history`,
+      form({ happened_on: '2026-03-10', body: '間の日' }),
+      env,
+    );
+
+    await app.request(
+      `/customers/${id}/history/${oldEntry}`,
+      form({ happened_on: '2026-09-09', body: '古い日で書いた' }),
+      env,
+    );
+
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html.indexOf('古い日で書いた')).toBeLessThan(html.indexOf('間の日'));
+  });
+
+  it('書き換えでも入力の検査は効く', async () => {
+    const { env, id } = newEnv();
+    const entryId = await withOneEntry(env, id);
+
+    const res = await app.request(
+      `/customers/${id}/history/${entryId}`,
+      form({ happened_on: '2026-02-31', body: '内容' }),
+      env,
+    );
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain('日付の形が違います');
+
+    // 元の内容は残っている。
+    const detail = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(detail).toContain('はじめの内容');
+  });
+
+  it('削除は一度聞き返してから消える', async () => {
+    const { env, id } = newEnv();
+    const entryId = await withOneEntry(env, id);
+
+    const ask = await (
+      await app.request(`/customers/${id}/history/${entryId}/delete`, {}, env)
+    ).text();
+    expect(ask).toContain('本当に削除しますか');
+    expect(ask).toContain('<button type="submit">はい、削除する</button>');
+
+    // 聞き返しを開いただけでは消えない。
+    expect(await (await app.request(`/customers/${id}`, {}, env)).text()).toContain('はじめの内容');
+
+    const res = await app.request(
+      `/customers/${id}/history/${entryId}/delete`,
+      { method: 'POST' },
+      env,
+    );
+    expect(res.status).toBe(303);
+
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html).not.toContain('はじめの内容');
+    expect(html).toContain('まだありません。');
+  });
+
+  it('消すのは押した1件だけ', async () => {
+    const { env, id } = newEnv();
+    const first = await withOneEntry(env, id, '2026-03-10', '消すほう');
+    await app.request(
+      `/customers/${id}/history`,
+      form({ happened_on: '2026-04-01', body: '残すほう' }),
+      env,
+    );
+
+    await app.request(`/customers/${id}/history/${first}/delete`, { method: 'POST' }, env);
+
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html).toContain('残すほう');
+    expect(html).not.toContain('消すほう');
+    expect(html).toContain('1件');
+  });
+
+  it('顧客を消してもやり取りは道連れになるだけで、他人のものは残る', async () => {
+    const { env, sqlite, id } = newEnv();
+    sqlite.prepare('INSERT INTO customers (name) VALUES (?)').run('鈴木花子');
+    const other = (
+      sqlite.prepare('SELECT id FROM customers WHERE name = ?').get('鈴木花子') as { id: number }
+    ).id;
+    await withOneEntry(env, id, '2026-03-10', '山田の分');
+    await app.request(
+      `/customers/${other}/history`,
+      form({ happened_on: '2026-03-11', body: '鈴木の分' }),
+      env,
+    );
+
+    await app.request(`/customers/${id}/delete`, { method: 'POST' }, env);
+
+    const html = await (await app.request(`/customers/${other}`, {}, env)).text();
+    expect(html).toContain('鈴木の分');
+  });
+
+  it('別の顧客のやり取りは、アドレスを書き換えても触れない', async () => {
+    const { env, sqlite, id } = newEnv();
+    sqlite.prepare('INSERT INTO customers (name) VALUES (?)').run('鈴木花子');
+    const other = (
+      sqlite.prepare('SELECT id FROM customers WHERE name = ?').get('鈴木花子') as { id: number }
+    ).id;
+    const entryId = await withOneEntry(env, id, '2026-03-10', '山田の分');
+
+    // 鈴木のアドレスから、山田のやり取りの id を指す。
+    expect((await app.request(`/customers/${other}/history/${entryId}/edit`, {}, env)).status).toBe(
+      404,
+    );
+    expect(
+      (
+        await app.request(
+          `/customers/${other}/history/${entryId}`,
+          form({ happened_on: '2026-03-10', body: '乗っ取り' }),
+          env,
+        )
+      ).status,
+    ).toBe(404);
+    expect(
+      (await app.request(`/customers/${other}/history/${entryId}/delete`, { method: 'POST' }, env))
+        .status,
+    ).toBe(404);
+
+    // 山田の側は無事。
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html).toContain('山田の分');
+    expect(html).not.toContain('乗っ取り');
+  });
+
+  it('居ないやり取りを開くと404になる', async () => {
+    const { env, id } = newEnv();
+    expect((await app.request(`/customers/${id}/history/999/edit`, {}, env)).status).toBe(404);
+    expect((await app.request(`/customers/${id}/history/999/delete`, {}, env)).status).toBe(404);
+  });
+});
