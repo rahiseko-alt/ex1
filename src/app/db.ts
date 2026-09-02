@@ -19,6 +19,8 @@ export interface CustomerRow {
   phone: string;
   email: string;
   note: string;
+  /** ごみ箱に入れた日時。空文字なら使っている顧客。 */
+  deleted_at: string;
   created_at: string;
   updated_at: string;
 }
@@ -81,7 +83,7 @@ export async function listCustomers(db: D1Database, keyword = ''): Promise<Custo
   const trimmed = keyword.trim();
   if (trimmed === '') {
     const { results } = await db
-      .prepare('SELECT * FROM customers ORDER BY name')
+      .prepare("SELECT * FROM customers WHERE deleted_at = '' ORDER BY name")
       .all<CustomerRow>();
     return results;
   }
@@ -92,7 +94,8 @@ export async function listCustomers(db: D1Database, keyword = ''): Promise<Custo
   const { results } = await db
     .prepare(
       `SELECT * FROM customers
-        WHERE name LIKE ? ESCAPE '!' OR company LIKE ? ESCAPE '!'
+        WHERE deleted_at = ''
+          AND (name LIKE ? ESCAPE '!' OR company LIKE ? ESCAPE '!')
         ORDER BY name`,
     )
     .bind(pattern, pattern)
@@ -102,7 +105,28 @@ export async function listCustomers(db: D1Database, keyword = ''): Promise<Custo
 
 /** 顧客を1件返す。見つからなければ null。 */
 export async function findCustomer(db: D1Database, id: number): Promise<CustomerRow | null> {
-  return await db.prepare('SELECT * FROM customers WHERE id = ?').bind(id).first<CustomerRow>();
+  // ごみ箱の中の顧客は「無い」ものとして扱う。消したはずの相手の画面が
+  // アドレスを覚えているだけで開けると、消えたかどうかが分からなくなるため。
+  return await db
+    .prepare("SELECT * FROM customers WHERE id = ? AND deleted_at = ''")
+    .bind(id)
+    .first<CustomerRow>();
+}
+
+/** ごみ箱の中の顧客を1件返す。見つからなければ null。 */
+export async function findDeletedCustomer(db: D1Database, id: number): Promise<CustomerRow | null> {
+  return await db
+    .prepare("SELECT * FROM customers WHERE id = ? AND deleted_at <> ''")
+    .bind(id)
+    .first<CustomerRow>();
+}
+
+/** ごみ箱の中身。あとで消したものが上。 */
+export async function listDeletedCustomers(db: D1Database): Promise<CustomerRow[]> {
+  const { results } = await db
+    .prepare("SELECT * FROM customers WHERE deleted_at <> '' ORDER BY deleted_at DESC, id DESC")
+    .all<CustomerRow>();
+  return results;
 }
 
 /** 顧客を1件書き換える。updated_at も同時に進める。 */
@@ -123,5 +147,18 @@ export async function updateCustomer(
 
 /** 顧客を1件消す。 */
 export async function deleteCustomer(db: D1Database, id: number): Promise<void> {
-  await db.prepare('DELETE FROM customers WHERE id = ?').bind(id).run();
+  // 表からは消さず、ごみ箱へ移すだけ。やり取りと案件もぶら下がったまま残るので、
+  // 元に戻せば消す前とまったく同じ状態に戻る。
+  await db
+    .prepare("UPDATE customers SET deleted_at = datetime('now') WHERE id = ? AND deleted_at = ''")
+    .bind(id)
+    .run();
+}
+
+/** ごみ箱から出して、また使えるようにする。 */
+export async function restoreCustomer(db: D1Database, id: number): Promise<void> {
+  await db
+    .prepare("UPDATE customers SET deleted_at = '' WHERE id = ? AND deleted_at <> ''")
+    .bind(id)
+    .run();
 }

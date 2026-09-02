@@ -198,6 +198,9 @@ export interface DealWithCustomer extends DealRow {
 /**
  * 全員ぶんの案件を、持ち主の名前つきで返す。新しく作ったものが上。
  *
+ * ごみ箱に入れた顧客の案件は出さない。顧客を消したのに案件だけ残ると、
+ * 消えたのかどうかが画面から分からなくなるため（元に戻せばまた出る）。
+ *
  * 顧客ごとの一覧（`listDealsOfCustomer`）と分けているのは、
  * こちらは「いま動いている商談を全部見る」用で、持ち主の名前が要るため。
  */
@@ -207,6 +210,7 @@ export async function listAllDeals(db: D1Database): Promise<DealWithCustomer[]> 
       `SELECT deals.*, customers.name AS customer_name
          FROM deals
          JOIN customers ON customers.id = deals.customer_id
+        WHERE customers.deleted_at = ''
         ORDER BY deals.id DESC`,
     )
     .all<DealWithCustomer>();
