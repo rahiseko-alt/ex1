@@ -236,7 +236,7 @@ describe('やり取りが新しい順に並ぶ', () => {
       ['2026-03-10', '2番目に新しい'],
       ['2026-01-05', '一番古い'],
       ['2026-05-20', '一番新しい'],
-    ]) {
+    ] as const) {
       await app.request(`/customers/${id}/history`, form({ happened_on, body }), env);
     }
 
@@ -249,7 +249,7 @@ describe('やり取りが新しい順に並ぶ', () => {
     for (const [happened_on, body] of [
       ['2026-01-05', '先に入れた古い日'],
       ['2026-05-20', '後から入れた新しい日'],
-    ]) {
+    ] as const) {
       await app.request(`/customers/${id}/history`, form({ happened_on, body }), env);
     }
 
