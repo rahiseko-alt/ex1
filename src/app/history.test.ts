@@ -222,3 +222,81 @@ describe('顧客にやり取りを1件書ける', () => {
     ).toBe(404);
   });
 });
+
+describe('やり取りが新しい順に並ぶ', () => {
+  /** 詳細画面に出ている日付を、上から順に取り出す。 */
+  function datesInOrder(html: string): string[] {
+    return [...html.matchAll(/<tr><th>(\d{4}-\d{2}-\d{2})<\/th>/g)].map((m) => m[1] ?? '');
+  }
+
+  it('ばらばらに書いても日付の新しいものが上に来る', async () => {
+    const { env, id } = newEnv();
+    // わざと順番をばらばらに入れる。入れた順に並ぶ作りだと、ここで違いが出る。
+    for (const [happened_on, body] of [
+      ['2026-03-10', '2番目に新しい'],
+      ['2026-01-05', '一番古い'],
+      ['2026-05-20', '一番新しい'],
+    ]) {
+      await app.request(`/customers/${id}/history`, form({ happened_on, body }), env);
+    }
+
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(datesInOrder(html)).toEqual(['2026-05-20', '2026-03-10', '2026-01-05']);
+  });
+
+  it('入れた順に並んでいるわけではない（入力順と並び順が違うことを見る）', async () => {
+    const { env, id } = newEnv();
+    for (const [happened_on, body] of [
+      ['2026-01-05', '先に入れた古い日'],
+      ['2026-05-20', '後から入れた新しい日'],
+    ]) {
+      await app.request(`/customers/${id}/history`, form({ happened_on, body }), env);
+    }
+
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html.indexOf('後から入れた新しい日')).toBeLessThan(html.indexOf('先に入れた古い日'));
+  });
+
+  it('同じ日なら後から書いたものが上に来る', async () => {
+    const { env, id } = newEnv();
+    for (const body of ['先に書いた', '後で書いた']) {
+      await app.request(`/customers/${id}/history`, form({ happened_on: '2026-03-10', body }), env);
+    }
+
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(html.indexOf('後で書いた')).toBeLessThan(html.indexOf('先に書いた'));
+  });
+
+  it('年をまたいでも文字列ではなく日付として並ぶ', async () => {
+    const { env, id } = newEnv();
+    for (const happened_on of ['2025-12-31', '2026-01-01']) {
+      await app.request(`/customers/${id}/history`, form({ happened_on, body: happened_on }), env);
+    }
+
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(datesInOrder(html)).toEqual(['2026-01-01', '2025-12-31']);
+  });
+
+  it('別の顧客のやり取りは並びに混ざらない', async () => {
+    const { env, sqlite, id } = newEnv();
+    sqlite.prepare('INSERT INTO customers (name) VALUES (?)').run('鈴木花子');
+    const other = (
+      sqlite.prepare('SELECT id FROM customers WHERE name = ?').get('鈴木花子') as { id: number }
+    ).id;
+
+    await app.request(
+      `/customers/${id}/history`,
+      form({ happened_on: '2026-01-05', body: '山田の分' }),
+      env,
+    );
+    await app.request(
+      `/customers/${other}/history`,
+      form({ happened_on: '2026-09-09', body: '鈴木の分' }),
+      env,
+    );
+
+    const html = await (await app.request(`/customers/${id}`, {}, env)).text();
+    expect(datesInOrder(html)).toEqual(['2026-01-05']);
+    expect(html).not.toContain('鈴木の分');
+  });
+});
