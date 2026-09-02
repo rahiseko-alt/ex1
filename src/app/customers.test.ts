@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
@@ -27,14 +27,27 @@ function fakeD1(sqlite: DatabaseSync): D1Database {
   } as unknown as D1Database;
 }
 
+/**
+ * `migrations/` にある SQL を番号順に全部当てる。
+ *
+ * 1つずつ名前で書くと、migration を足したときに書き足し忘れて
+ * 「実物では動くのにテストだけ落ちる」状態になる（実際に2度起きた）。
+ * `pnpm run db:setup` と同じく、置いてあるものを全部当てる形にしてある。
+ */
+function applyAllMigrations(db: DatabaseSync): void {
+  const dir = join(repoRoot, 'migrations');
+  for (const file of readdirSync(dir).sort()) {
+    if (file.endsWith('.sql')) db.exec(readFileSync(join(dir, file), 'utf8'));
+  }
+}
+
 function newEnv(): { env: Env; sqlite: DatabaseSync } {
   const sqlite = new DatabaseSync(':memory:');
   // SQLite は既定で外部キーを見ない。D1 は見るので、こちらも明示的に揃えておく。
   sqlite.exec('PRAGMA foreign_keys = ON');
   // 実物（pnpm run db:setup）と同じく migration を全部当てる。
   // 詳細画面がやり取りの一覧も出すため、customers だけでは足りない。
-  sqlite.exec(readFileSync(join(repoRoot, 'migrations', '0001_customers.sql'), 'utf8'));
-  sqlite.exec(readFileSync(join(repoRoot, 'migrations', '0002_history.sql'), 'utf8'));
+  applyAllMigrations(sqlite);
   return { env: { DB: fakeD1(sqlite) }, sqlite };
 }
 

@@ -13,6 +13,7 @@ import {
   listCustomers,
   updateCustomer,
   type CustomerRow,
+  type DealRow,
   type Env,
   type HistoryRow,
 } from './db.js';
@@ -25,6 +26,7 @@ import {
   validateHistory,
   type HistoryInput,
 } from './history.js';
+import { insertDeal, listDealsOfCustomer, readDealInput, validateDeal } from './deals.js';
 import { validateCustomer, type FieldError } from './validate.js';
 
 /** 入力欄1つぶんの定義。画面と、保存処理の両方がこの並びを見る。 */
@@ -291,12 +293,46 @@ ${items}
     </table>`;
 }
 
+/** 案件を1件足す入力欄。案件名だけ。進み具合は作った後に変える（T017）。 */
+function renderDealForm(
+  customerId: number,
+  values: Partial<{ title: string }> = {},
+  errors: readonly FieldError[] = [],
+): string {
+  const summary =
+    errors.length === 0
+      ? ''
+      : `    <p class="error-summary"><strong>入力を確かめてください。</strong></p>\n`;
+  return `${summary}    <form method="post" action="/customers/${customerId}/deals" novalidate>
+      <p>
+        <label for="f-title">案件名</label><br />
+        <input id="f-title" name="title" type="text" value="${escapeHtml(values.title ?? '')}" required />${errorNote('title', errors)}
+      </p>
+      <p><button type="submit">案件を追加</button></p>
+    </form>`;
+}
+
+/** その顧客の案件を並べる。0件のときは表を出さず、そう書く。 */
+function renderDealList(rows: readonly DealRow[]): string {
+  if (rows.length === 0) return '    <p>案件はまだありません。</p>';
+  const items = rows.map((row) => `        <tr><td>${escapeHtml(row.title)}</td></tr>`).join('\n');
+  return `    <p>案件 ${rows.length}件</p>
+    <table>
+      <tbody>
+${items}
+      </tbody>
+    </table>`;
+}
+
 /** 詳細画面。やり取りの入力欄と一覧も同じ画面に出す。 */
 function detailPage(
   row: CustomerRow,
   history: readonly HistoryRow[],
+  deals: readonly DealRow[],
   values: Partial<HistoryInput> = {},
   errors: readonly FieldError[] = [],
+  dealValues: Partial<{ title: string }> = {},
+  dealErrors: readonly FieldError[] = [],
 ): string {
   const details = DETAIL_ROWS.map(
     (detail) => `        <tr><th>${detail.label}</th><td>${escapeHtml(row[detail.key])}</td></tr>`,
@@ -311,6 +347,9 @@ ${details}
       </tbody>
     </table>
     <p><a href="/customers/${row.id}/edit">編集</a> ／ <a href="/customers/${row.id}/delete">削除</a></p>
+    <h2>案件</h2>
+${renderDealForm(row.id, dealValues, dealErrors)}
+${renderDealList(deals)}
     <h2>やり取り</h2>
 ${renderHistoryForm(row.id, values, errors)}
 ${renderHistoryList(history)}
@@ -326,7 +365,9 @@ customers.get('/customers/:id', async (c) => {
   const row = await findCustomer(c.env.DB, id);
   if (row === null) return c.html(notFoundPage(), 404);
 
-  return c.html(detailPage(row, await listHistory(c.env.DB, id)));
+  return c.html(
+    detailPage(row, await listHistory(c.env.DB, id), await listDealsOfCustomer(c.env.DB, id)),
+  );
 });
 
 customers.post('/customers/:id/history', async (c) => {
@@ -349,7 +390,16 @@ customers.post('/customers/:id/history', async (c) => {
   const errors = validateHistory(input);
   if (errors.length > 0) {
     // 打った内容はそのまま返す。書き直しのために全部打ち直させないため。
-    return c.html(detailPage(row, await listHistory(c.env.DB, id), input, errors), 400);
+    return c.html(
+      detailPage(
+        row,
+        await listHistory(c.env.DB, id),
+        await listDealsOfCustomer(c.env.DB, id),
+        input,
+        errors,
+      ),
+      400,
+    );
   }
 
   await insertHistory(c.env.DB, id, input);
@@ -552,4 +602,34 @@ customers.post('/customers/:id/history/:historyId/delete', async (c) => {
   await deleteHistory(c.env.DB, found.customer.id, found.entry.id);
 
   return c.redirect(`/customers/${found.customer.id}`, 303);
+});
+
+customers.post('/customers/:id/deals', async (c) => {
+  const id = Number(c.req.param('id'));
+  if (!Number.isInteger(id) || id <= 0) return c.notFound();
+
+  const row = await findCustomer(c.env.DB, id);
+  if (row === null) return c.html(notFoundPage(), 404);
+
+  const input = readDealInput(await c.req.formData());
+  const errors = validateDeal(input);
+  if (errors.length > 0) {
+    return c.html(
+      detailPage(
+        row,
+        await listHistory(c.env.DB, id),
+        await listDealsOfCustomer(c.env.DB, id),
+        {},
+        [],
+        input,
+        errors,
+      ),
+      400,
+    );
+  }
+
+  await insertDeal(c.env.DB, id, input);
+
+  // 保存後に詳細へ送り直すのは、再読み込みで同じ案件が二重に入らないようにするため。
+  return c.redirect(`/customers/${id}`, 303);
 });

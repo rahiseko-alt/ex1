@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { DatabaseSync, type SQLInputValue } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
@@ -24,12 +24,25 @@ function fakeD1(sqlite: DatabaseSync): D1Database {
   } as unknown as D1Database;
 }
 
+/**
+ * `migrations/` にある SQL を番号順に全部当てる。
+ *
+ * 1つずつ名前で書くと、migration を足したときに書き足し忘れて
+ * 「実物では動くのにテストだけ落ちる」状態になる（実際に2度起きた）。
+ * `pnpm run db:setup` と同じく、置いてあるものを全部当てる形にしてある。
+ */
+function applyAllMigrations(db: DatabaseSync): void {
+  const dir = join(repoRoot, 'migrations');
+  for (const file of readdirSync(dir).sort()) {
+    if (file.endsWith('.sql')) db.exec(readFileSync(join(dir, file), 'utf8'));
+  }
+}
+
 /** 顧客を1人だけ登録した状態から始める。やり取りは必ず誰かにぶら下がるため。 */
 function newEnv(name = '山田太郎'): { env: Env; sqlite: DatabaseSync; id: number } {
   const sqlite = new DatabaseSync(':memory:');
   sqlite.exec('PRAGMA foreign_keys = ON');
-  sqlite.exec(readFileSync(join(repoRoot, 'migrations', '0001_customers.sql'), 'utf8'));
-  sqlite.exec(readFileSync(join(repoRoot, 'migrations', '0002_history.sql'), 'utf8'));
+  applyAllMigrations(sqlite);
   sqlite.prepare('INSERT INTO customers (name) VALUES (?)').run(name);
   const row = sqlite.prepare('SELECT id FROM customers WHERE name = ?').get(name) as { id: number };
   return { env: { DB: fakeD1(sqlite) }, sqlite, id: row.id };

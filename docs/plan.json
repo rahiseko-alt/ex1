@@ -238,7 +238,7 @@
       "dependsOn": ["T006", "T015"],
       "files": ["src/app/deals.ts", "src/app/deals.test.ts", "src/app/customers.ts"],
       "automation": "ci",
-      "status": "todo",
+      "status": "done",
       "origin": "initial"
     },
     {
