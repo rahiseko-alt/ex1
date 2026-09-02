@@ -140,3 +140,12 @@
 ```
 M docs/handoff.md
 ```
+
+<!-- session-end-stamp -->
+
+## セッション終了時点の状態（自動記録）
+
+- 記録時刻: 2026-09-02 10:00 UTC
+- ブランチ: `claude/checkin-d19vz8`
+- HEAD: `9fafbee`
+- 未コミットの変更: なし
