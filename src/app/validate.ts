@@ -16,6 +16,7 @@ export interface FieldError {
 /** 見る対象。入力欄の名前と同じ。 */
 export interface CustomerInput {
   name: string;
+  kana: string;
   company: string;
   phone: string;
   email: string;

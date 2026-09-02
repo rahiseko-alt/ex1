@@ -22,7 +22,9 @@
     "format:check": "prettier --check .",
     "check": "pnpm run format:check && pnpm run typecheck && pnpm run test",
     "db:setup": "wrangler d1 migrations apply crm --local",
-    "db:show": "wrangler d1 execute crm --local --command \"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name\""
+    "db:show": "wrangler d1 execute crm --local --command \"SELECT name FROM sqlite_master WHERE type='table' ORDER BY name\"",
+    "db:setup:remote": "wrangler d1 migrations apply crm --remote",
+    "deploy": "wrangler deploy"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260901.1",

@@ -467,7 +467,7 @@
       "dependsOn": ["T005"],
       "files": ["migrations/0006_customer_kana.sql", "src/app/customers.ts", "src/app/db.ts"],
       "automation": "ci",
-      "status": "todo",
+      "status": "done",
       "origin": "added",
       "note": "T004 の作業中に、名前順の並びが文字コード順（佐藤 → 鈴木 → 青木）になり五十音順にならないと分かった。ふりがなの欄が要る"
     }

@@ -49,6 +49,7 @@ function form(values: Record<string, string>): RequestInit {
 
 const person = (name: string, extra: Partial<CsvCustomer> = {}): CsvCustomer => ({
   name,
+  kana: '',
   company: '',
   phone: '',
   email: '',
@@ -58,19 +59,19 @@ const person = (name: string, extra: Partial<CsvCustomer> = {}): CsvCustomer => 
 
 describe('CSV に書き出す', () => {
   it('1行目は見出し', () => {
-    expect(toCsv([]).replace(BOM, '')).toBe('名前,会社名,電話,メール,メモ\r\n');
+    expect(toCsv([]).replace(BOM, '')).toBe('名前,ふりがな,会社名,電話,メール,メモ\r\n');
   });
 
   it('1人が1行になる', () => {
     const csv = toCsv([
-      person('山田太郎', { company: '山田工務店', phone: '090-1111-2222' }),
+      person('山田太郎', { kana: 'やまだたろう', company: '山田工務店', phone: '090-1111-2222' }),
       person('鈴木花子'),
     ]);
     const lines = csv.replace(BOM, '').trimEnd().split('\r\n');
 
     expect(lines).toHaveLength(3);
-    expect(lines[1]).toBe('山田太郎,山田工務店,090-1111-2222,,');
-    expect(lines[2]).toBe('鈴木花子,,,,');
+    expect(lines[1]).toBe('山田太郎,やまだたろう,山田工務店,090-1111-2222,,');
+    expect(lines[2]).toBe('鈴木花子,,,,,');
   });
 
   it('コンマを含む値は引用符で囲む', () => {
@@ -96,9 +97,10 @@ describe('CSV に書き出す', () => {
     expect(csvFileName(new Date(2026, 8, 2))).toBe('customers-2026-09-02.csv');
   });
 
-  it('書き出しと取り込みで使う列は名前・会社名・電話・メール・メモ', () => {
+  it('書き出しと取り込みで使う列は名前・ふりがな・会社名・電話・メール・メモ', () => {
     expect(CSV_COLUMNS.map((column) => column.key)).toEqual([
       'name',
+      'kana',
       'company',
       'phone',
       'email',
@@ -150,6 +152,7 @@ describe('画面から書き出す', () => {
       '/customers',
       form({
         name: '山田太郎',
+        kana: 'やまだたろう',
         company: '山田工務店',
         phone: '090-1111-2222',
         email: 'yamada@example.com',
@@ -159,7 +162,9 @@ describe('画面から書き出す', () => {
     );
 
     const csv = await (await app.request('/customers/export', {}, env)).text();
-    expect(csv).toContain('山田太郎,山田工務店,090-1111-2222,yamada@example.com,メモです');
+    expect(csv).toContain(
+      '山田太郎,やまだたろう,山田工務店,090-1111-2222,yamada@example.com,メモです',
+    );
   });
 
   it('ごみ箱の中の顧客は書き出されない', async () => {
@@ -177,13 +182,14 @@ describe('画面から書き出す', () => {
 describe('CSV を読み取る', () => {
   it('見出しと3件を読み取る', () => {
     const { customers, problems } = parseCustomersCsv(
-      '名前,会社名,電話,メール,メモ\r\n山田太郎,山田工務店,090-1,a@example.com,メモ1\r\n鈴木花子,,,,\r\n佐藤一郎,佐藤商事,,,\r\n',
+      '名前,ふりがな,会社名,電話,メール,メモ\r\n山田太郎,やまだたろう,山田工務店,090-1,a@example.com,メモ1\r\n鈴木花子,,,,,\r\n佐藤一郎,,佐藤商事,,,\r\n',
     );
 
     expect(problems).toEqual([]);
     expect(customers).toHaveLength(3);
     expect(customers[0]).toEqual({
       name: '山田太郎',
+      kana: 'やまだたろう',
       company: '山田工務店',
       phone: '090-1',
       email: 'a@example.com',
@@ -193,8 +199,15 @@ describe('CSV を読み取る', () => {
 
   it('書き出したものをそのまま読み戻せる', () => {
     const original = [
-      { name: '山田太郎', company: '山田,工務店', phone: '090-1', email: '', note: '通称"タロー"' },
-      { name: '鈴木花子', company: '', phone: '', email: '', note: '1行目\n2行目' },
+      {
+        name: '山田太郎',
+        kana: 'やまだたろう',
+        company: '山田,工務店',
+        phone: '090-1',
+        email: '',
+        note: '通称"タロー"',
+      },
+      { name: '鈴木花子', kana: '', company: '', phone: '', email: '', note: '1行目\n2行目' },
     ];
     const { customers, problems } = parseCustomersCsv(toCsv(original));
 
@@ -205,7 +218,7 @@ describe('CSV を読み取る', () => {
   it('改行が LF だけでも読める（Excel 以外で作ったファイル）', () => {
     const { customers } = parseCustomersCsv('名前,会社名\n山田太郎,山田工務店\n');
     expect(customers).toEqual([
-      { name: '山田太郎', company: '山田工務店', phone: '', email: '', note: '' },
+      { name: '山田太郎', kana: '', company: '山田工務店', phone: '', email: '', note: '' },
     ]);
   });
 

@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { validateCustomer, type CustomerInput } from './validate.js';
 
 function input(overrides: Partial<CustomerInput> = {}): CustomerInput {
-  return { name: '山田太郎', company: '', phone: '', email: '', note: '', ...overrides };
+  return { name: '山田太郎', kana: '', company: '', phone: '', email: '', note: '', ...overrides };
 }
 
 describe('入力のまちがいを見つける', () => {

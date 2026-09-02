@@ -862,3 +862,80 @@ describe('まちがえて消しても取り戻せる', () => {
     expect(trash).not.toContain('鈴木花子');
   });
 });
+
+describe('五十音順に並べる', () => {
+  /** 名前とふりがなで1人登録する。 */
+  async function register(env: Env, name: string, kana: string): Promise<void> {
+    await app.request('/customers', form({ name, kana }), env);
+  }
+
+  /** 一覧に出ている名前を、出ている順に返す。 */
+  async function namesInOrder(env: Env): Promise<string[]> {
+    const html = await (await app.request('/customers', {}, env)).text();
+    return [...html.matchAll(/<a href="\/customers\/\d+">([^<]+)<\/a>/g)].map((m) => m[1] ?? '');
+  }
+
+  it('登録画面にふりがなの欄がある', async () => {
+    const { env } = newEnv();
+    expect(await (await app.request('/customers/new', {}, env)).text()).toContain('id="f-kana"');
+  });
+
+  it('あいうえお順に並ぶ（登録した順ではなく）', async () => {
+    const { env } = newEnv();
+    await register(env, '佐藤一郎', 'さとういちろう');
+    await register(env, '鈴木花子', 'すずきはなこ');
+    await register(env, '青木太郎', 'あおきたろう');
+
+    expect(await namesInOrder(env)).toEqual(['青木太郎', '佐藤一郎', '鈴木花子']);
+  });
+
+  it('カタカナで入れてもひらがなと同じ場所に並ぶ', async () => {
+    const { env, sqlite } = newEnv();
+    await register(env, '青木太郎', 'アオキタロウ');
+    await register(env, '佐藤一郎', 'さとういちろう');
+
+    expect(await namesInOrder(env)).toEqual(['青木太郎', '佐藤一郎']);
+    // 置き場にはひらがなで入っている。
+    const row = sqlite.prepare('SELECT kana FROM customers WHERE name = ?').get('青木太郎') as {
+      kana: string;
+    };
+    expect(row.kana).toBe('あおきたろう');
+  });
+
+  it('ふりがなが無い人は、ふりがなのある人の後ろに並ぶ', async () => {
+    const { env } = newEnv();
+    await register(env, '山田太郎', '');
+    await register(env, '鈴木花子', 'すずきはなこ');
+
+    expect(await namesInOrder(env)).toEqual(['鈴木花子', '山田太郎']);
+  });
+
+  it('ふりがなは空でも登録できる', async () => {
+    const { env } = newEnv();
+    const res = await app.request('/customers', form({ name: '山田太郎' }), env);
+    expect(res.status).toBe(303);
+    expect(await (await app.request('/customers', {}, env)).text()).toContain('山田太郎');
+  });
+
+  it('ふりがなで探せる', async () => {
+    const { env } = newEnv();
+    await register(env, '青木太郎', 'あおきたろう');
+    await register(env, '佐藤一郎', 'さとういちろう');
+
+    const html = await (await app.request('/customers?q=あおき', {}, env)).text();
+    expect(html).toContain('青木太郎');
+    expect(html).not.toContain('佐藤一郎');
+  });
+
+  it('編集でふりがなを直すと、並ぶ場所も変わる', async () => {
+    const { env } = newEnv();
+    await register(env, '東太郎', 'ひがしたろう');
+    await register(env, '佐藤一郎', 'さとういちろう');
+    expect(await namesInOrder(env)).toEqual(['佐藤一郎', '東太郎']);
+
+    // 「東」は「あずま」とも読む。読み方を直したら並びも直る。
+    await app.request('/customers/1', form({ name: '東太郎', kana: 'あずまたろう' }), env);
+
+    expect(await namesInOrder(env)).toEqual(['東太郎', '佐藤一郎']);
+  });
+});
