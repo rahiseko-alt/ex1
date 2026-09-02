@@ -253,7 +253,7 @@
       "dependsOn": ["T016"],
       "files": ["src/app/deals.ts", "src/app/deals.test.ts"],
       "automation": "ci",
-      "status": "todo",
+      "status": "done",
       "origin": "initial"
     },
     {
