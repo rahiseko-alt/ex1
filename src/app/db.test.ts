@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
@@ -10,6 +10,20 @@ import { listTableNames } from './db.js';
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), '..', '..');
 
 /**
+ * `migrations/` にある SQL を番号順に全部当てる。
+ *
+ * 1つずつ名前で書くと、migration を足したときに書き足し忘れて
+ * 「実物では動くのにテストだけ落ちる」状態になる（実際に2度起きた）。
+ * `pnpm run db:setup` と同じく、置いてあるものを全部当てる形にしてある。
+ */
+function applyAllMigrations(db: DatabaseSync): void {
+  const dir = join(repoRoot, 'migrations');
+  for (const file of readdirSync(dir).sort()) {
+    if (file.endsWith('.sql')) db.exec(readFileSync(join(dir, file), 'utf8'));
+  }
+}
+
+/**
  * D1 は SQLite なので、同じ SQL を手元の SQLite にかければ表の形を検査できる。
  * wrangler を起動せずに済むぶん、CI で毎回まわせる。
  */
@@ -17,9 +31,7 @@ function applyMigrations(): DatabaseSync {
   const db = new DatabaseSync(':memory:');
   // SQLite は既定で外部キーを見ない。D1 は見るので、こちらも明示的に揃えておく。
   db.exec('PRAGMA foreign_keys = ON');
-  db.exec(readFileSync(join(repoRoot, 'migrations', '0001_customers.sql'), 'utf8'));
-  db.exec(readFileSync(join(repoRoot, 'migrations', '0002_history.sql'), 'utf8'));
-  db.exec(readFileSync(join(repoRoot, 'migrations', '0003_deals.sql'), 'utf8'));
+  applyAllMigrations(db);
   return db;
 }
 
