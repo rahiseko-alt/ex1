@@ -208,7 +208,7 @@
       "dependsOn": ["T013"],
       "files": ["src/app/history.ts", "src/app/history.test.ts"],
       "automation": "ci",
-      "status": "todo",
+      "status": "done",
       "origin": "initial"
     },
     {
