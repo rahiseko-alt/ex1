@@ -38,6 +38,16 @@ export interface HistoryRow {
   updated_at: string;
 }
 
+/** `deals` の1行。`migrations/0003_deals.sql` と対応する。 */
+export interface DealRow {
+  id: number;
+  customer_id: number;
+  title: string;
+  stage: string;
+  created_at: string;
+  updated_at: string;
+}
+
 /** 置き場にある表の名前を全部返す。中身ではなく「入れ物が出来ているか」を見るために使う。 */
 export async function listTableNames(db: D1Database): Promise<string[]> {
   const { results } = await db
